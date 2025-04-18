@@ -58,7 +58,7 @@ def setup_database():
                 print("Creating users table...")
                 cursor.execute('''
                 CREATE TABLE users (
-                    user_id INTEGER PRIMARY KEY,
+                    user_id BIGINT PRIMARY KEY,
                     username TEXT,
                     balance REAL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -83,7 +83,7 @@ def setup_database():
                 cursor.execute('''
                 CREATE TABLE user_monitoring (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER,
+                    user_id BIGINT,
                     product_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     expiry_date TIMESTAMP,
