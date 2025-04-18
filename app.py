@@ -2,7 +2,7 @@ import os
 from settings_bot import SettingsBot
 from notification_bot import NotificationBot
 from admin_panel import AdminPanel
-from monitors.global_monitor import GlobalMonitor
+from monitors.selenium_monitor import GlobalMonitor
 from monitors.au_monitor import AUMonitor
 import threading
 import time
