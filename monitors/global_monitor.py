@@ -139,24 +139,24 @@ class GlobalMonitor:
             logger.info(f"Getting stock info for product: {product_id_or_url} in {country}")
             
             # Extract product ID from URL if necessary
-            product_id = None
+            api_product_id = None
             if isinstance(product_id_or_url, str):
                 if '/' in product_id_or_url:
                     # This is a URL, extract the product ID
-                    product_id = self.extract_product_id_from_url(product_id_or_url)
-                    logger.info(f"Extracted product ID {product_id} from URL {product_id_or_url}")
+                    api_product_id = self.extract_product_id_from_url(product_id_or_url)
+                    logger.info(f"Extracted product ID {api_product_id} from URL {product_id_or_url}")
                 else:
                     # This might be a direct product ID
-                    product_id = product_id_or_url
-                    logger.info(f"Using direct product ID: {product_id}")
+                    api_product_id = product_id_or_url
+                    logger.info(f"Using direct product ID: {api_product_id}")
             
-            if not product_id:
+            if not api_product_id:
                 logger.error(f"Failed to determine product ID from: {product_id_or_url}")
                 return None
                 
-            logger.info(f"Querying product details for ID: {product_id}")
+            logger.info(f"Querying product details for ID: {api_product_id}")
             endpoint = "/shop/v1/shop/productDetails"
-            params = {"spuId": product_id}
+            params = {"spuId": api_product_id}
             
             details = self.make_api_request_with_retry(endpoint, params, country=country, language=language)
             
@@ -165,7 +165,7 @@ class GlobalMonitor:
                 return None
                 
             if "data" not in details or not details["data"]:
-                logger.error(f"No data returned for product {product_id}")
+                logger.error(f"No data returned for product {api_product_id}")
                 return None
                 
             product_data = details["data"]
@@ -177,7 +177,7 @@ class GlobalMonitor:
                 logger.debug("No 'skus' found, using 'goods' field instead")
                 skus = product_data.get("goods", [])
                 
-            logger.debug(f"Found {len(skus)} SKUs for product {product_id}")
+            logger.debug(f"Found {len(skus)} SKUs for product {api_product_id}")
             
             # Log individual SKU stock information for debugging
             for i, sku in enumerate(skus):
@@ -188,10 +188,11 @@ class GlobalMonitor:
             in_stock = any(sku.get("stock", {}).get("onlineStock", 0) > 0 for sku in skus)
             product_title = product_data.get("title", "Unknown")
             
-            logger.info(f"Product '{product_title}' (ID: {product_id}) in_stock: {in_stock}")
+            logger.info(f"Product '{product_title}' (ID: {api_product_id}) in_stock: {in_stock}")
             
             return {
-                "product_id": product_id, 
+                "product_id": product_id_or_url,  # Keep original ID for DB operations
+                "api_product_id": api_product_id,  # Keep API product ID 
                 "title": product_title,
                 "in_stock": in_stock,
                 "skus": [
@@ -235,43 +236,43 @@ class GlobalMonitor:
                         logger.warning(f"Skipping product due to unexpected data structure: {product}")
                         continue
                         
-                    product_id_db, product_name, global_link = product[:3]  # Only unpack the first three values
+                    db_product_id, product_name, global_link = product[:3]  # Only unpack the first three values
                     
                     if not global_link:
-                        logger.warning(f"No global link for product {product_name} (DB ID: {product_id_db})")
+                        logger.warning(f"No global link for product {product_name} (DB ID: {db_product_id})")
                         continue
                         
                     # Extract the proper product ID from the global link
-                    product_id = self.extract_product_id_from_url(global_link)
+                    api_product_id = self.extract_product_id_from_url(global_link)
                     
-                    if not product_id:
+                    if not api_product_id:
                         logger.warning(f"Could not extract product ID from global link: {global_link}")
                         # Fall back to the database ID if we can't extract from URL
-                        product_id = product_id_db
-                        logger.info(f"Using database ID {product_id} as fallback")
+                        api_product_id = db_product_id
+                        logger.info(f"Using database ID {api_product_id} as fallback")
                         
-                    logger.info(f"Checking stock for {product_name} (ID: {product_id}, Link: {global_link})")
+                    logger.info(f"Checking stock for {product_name} (DB ID: {db_product_id}, API ID: {api_product_id}, Link: {global_link})")
                     
                     # Use AU as country instead of GLOBAL (based on working code)
-                    stock_info = self.get_product_stock_info(product_id, country="AU")
+                    stock_info = self.get_product_stock_info(api_product_id, country="AU")
                     
                     if not stock_info:
-                        logger.warning(f"[AU] Could not get stock info for {product_name} (ID: {product_id})")
+                        logger.warning(f"[AU] Could not get stock info for {product_name} (API ID: {api_product_id})")
                         continue
                         
                     is_in_stock = stock_info["in_stock"]
                     product_title = stock_info.get("title", product_name)
                     
                     # Log the details we're about to use for notification decisions
-                    logger.debug(f"Product details: DB name={product_name}, API title={product_title}, in_stock={is_in_stock}")
+                    logger.debug(f"Product details: DB name={product_name}, DB ID={db_product_id}, API title={product_title}, in_stock={is_in_stock}")
                     
-                    # Check if we should notify based on stock status change
-                    should_notify = self.db.should_notify_stock_change(product_id, "AU", is_in_stock)
+                    # IMPORTANT: Use the database product ID for database operations, not the API product ID
+                    should_notify = self.db.should_notify_stock_change(db_product_id, "AU", is_in_stock)
                     
                     if is_in_stock:
                         if should_notify:
                             logger.info(f"[AU] {product_name} is now in stock! Sending notifications.")
-                            self.notification_bot.send_stock_notification(product_id, product_name, global_link, is_global=False)
+                            self.notification_bot.send_stock_notification(db_product_id, product_name, global_link, is_global=False)
                             logger.info(f"[AU] Notifications sent for {product_name}.")
                         else:
                             logger.info(f"[AU] {product_name} is still in stock. No notifications sent.")
@@ -293,25 +294,26 @@ class GlobalMonitor:
         
         try:
             # Extract product ID from URL if necessary
-            product_id = product_id_or_url
+            api_product_id = product_id_or_url
             if isinstance(product_id_or_url, str) and '/' in product_id_or_url:
-                product_id = self.extract_product_id_from_url(product_id_or_url)
-                logger.info(f"Extracted product ID: {product_id} from URL: {product_id_or_url}")
+                api_product_id = self.extract_product_id_from_url(product_id_or_url)
+                logger.info(f"Extracted product ID: {api_product_id} from URL: {product_id_or_url}")
                 
-            if not product_id:
+            if not api_product_id:
                 logger.error(f"Invalid URL format, could not extract product ID: {product_id_or_url}")
                 return {"success": False, "message": "Invalid URL format, could not extract product ID"}
                 
             # Try to get product info from database
-            product = self.db.get_product(product_id)
-            product_name = product[1] if product else f"Product {product_id}"
-            logger.info(f"Retrieved product from DB: {product_name} (ID: {product_id})")
+            product = self.db.get_product(product_id_or_url)  # Use original ID for DB lookup
+            db_product_id = product_id_or_url
+            product_name = product[1] if product else f"Product {db_product_id}"
+            logger.info(f"Retrieved product from DB: {product_name} (ID: {db_product_id})")
             
-            # Check stock status using the AU region
-            stock_info = self.get_product_stock_info(product_id, country="AU")
+            # Check stock status using the AU region and API product ID
+            stock_info = self.get_product_stock_info(api_product_id, country="AU")
             
             if not stock_info:
-                logger.error(f"Could not check stock status for {product_id}")
+                logger.error(f"Could not check stock status for {api_product_id}")
                 return {"success": False, "message": "Could not check stock status"}
                 
             is_in_stock = stock_info["in_stock"]
@@ -333,13 +335,15 @@ class GlobalMonitor:
                     "locked_stock": sku.get('lock_stock', 0)
                 })
             
-            logger.info(f"Stock check result for {product_title} (ID: {product_id}): {'In Stock' if is_in_stock else 'Out of Stock'}")
+            logger.info(f"Stock check result for {product_title} (ID: {api_product_id}): {'In Stock' if is_in_stock else 'Out of Stock'}")
             
             return {
                 "success": True, 
                 "product_name": product_name,
                 "product_title": product_title, 
                 "in_stock": is_in_stock,
+                "api_product_id": api_product_id,
+                "db_product_id": db_product_id,
                 "sku_details": sku_details,
                 "message": f"AU store: {'In Stock' if is_in_stock else 'Out of Stock'}"
             }
@@ -352,4 +356,4 @@ class GlobalMonitor:
 # Example usage:
 # notification_bot_token = "YOUR_BOT_TOKEN"
 # global_monitor = GlobalMonitor(notification_bot_token)
-# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock statuss
+# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock status
