@@ -98,19 +98,33 @@ class GlobalMonitor:
 
     def extract_product_code(self, product_id):
         """Extract product code from ID or URL if needed"""
-        # If it looks like a URL, try to extract the code
-        if product_id and ('http' in product_id or '/' in product_id):
-            # Try to extract ID from URLs like https://www.popmart.com/goods/detail?id=PROD12345
-            match = re.search(r'id=([A-Za-z0-9]+)', product_id)
-            if match:
-                return match.group(1)
-                
-            # Try to extract ID from a path like /goods/PROD12345
-            match = re.search(r'/([A-Za-z0-9]+)(?:/|\?|$)', product_id)
-            if match:
-                return match.group(1)
-                
-        return product_id  # Return as is if not a URL or couldn't extract
+        # If it's already a simple ID (not a URL), return it as is
+        if product_id and not ('http' in product_id or '/' in product_id):
+            return product_id
+            
+        # Try to extract ID from URLs like https://www.popmart.com/goods/detail?id=PROD12345
+        match = re.search(r'id=([A-Za-z0-9]+)', product_id)
+        if match:
+            return match.group(1)
+        
+        # Try to extract ID from URLs like https://www.popmart.com/au/products/643/PRODUCT-NAME
+        match = re.search(r'/products/([^/]+)', product_id)
+        if match:
+            return match.group(1)
+            
+        # Try to extract ID from a path like /goods/PROD12345
+        match = re.search(r'/goods/([A-Za-z0-9]+)', product_id)
+        if match:
+            return match.group(1)
+            
+        # Try to extract ID from URLs with numeric IDs like example.com/123-product-name
+        match = re.search(r'/([0-9]+)(?:-|/|$)', product_id)
+        if match:
+            return match.group(1)
+            
+        # If we can't extract a code, return the original value
+        print(f"Could not extract product code from: {product_id}")
+        return product_id
 
     def get_product_stock_info(self, product_id):
         """Get stock information for a specific product"""
@@ -125,21 +139,30 @@ class GlobalMonitor:
             details = self.make_api_request(endpoint, params)
             
             if "data" not in details or not details["data"]:
+                print(f"No data returned from API for product code: {product_code}")
+                if "message" in details:
+                    print(f"API error message: {details['message']}")
                 return None
             
             product_data = details["data"]
             skus = product_data.get("skus", [])
             
             in_stock = False
+            stock_details = []
+            
             for sku in skus:
-                if sku.get("stock", {}).get("onlineStock", 0) > 0:
+                variant_title = sku.get("name", "Default Variant")
+                stock_level = sku.get("stock", {}).get("onlineStock", 0)
+                stock_details.append(f"{variant_title}: {stock_level}")
+                
+                if stock_level > 0:
                     in_stock = True
-                    break
             
             return {
                 "product_id": product_id,
                 "title": product_data.get("title", "Unknown"),
-                "in_stock": in_stock
+                "in_stock": in_stock,
+                "stock_details": stock_details
             }
         except Exception as e:
             print(f"Error getting stock for product {product_id}: {str(e)}")
@@ -197,10 +220,11 @@ class GlobalMonitor:
             return {"success": False, "message": "Could not check stock status"}
         
         is_in_stock = stock_info["in_stock"]
+        stock_details = "\n".join(stock_info.get("stock_details", ["No variant details available"]))
         
         return {
             "success": True, 
             "product_name": product_name,
             "in_stock": is_in_stock,
-            "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"
+            "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}\n\nDetails:\n{stock_details}"
         }
