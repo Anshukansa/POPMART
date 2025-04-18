@@ -113,6 +113,7 @@ class GlobalMonitor:
     def get_product_stock_info(self, product_id_or_url, country="GLOBAL", language="en"):
         """Get stock information for a specific product"""
         try:
+            # Extract product ID from URL if necessary
             product_id = product_id_or_url if isinstance(product_id_or_url, str) and not '/' in product_id_or_url else self.extract_product_id_from_url(product_id_or_url)
             if not product_id:
                 return None
@@ -143,10 +144,12 @@ class GlobalMonitor:
             return
         logger.info(f"Checking {len(monitored_products)} monitored products")
         for product in monitored_products:
-            if len(product) != 3:
+            # Ensure that we unpack only the expected number of columns
+            if len(product) < 3:
+                # Log or handle the extra columns appropriately
                 logger.warning(f"Skipping product due to unexpected data structure: {product}")
                 continue
-            product_id, product_name, global_link = product[:3]
+            product_id, product_name, global_link = product[:3]  # Only unpack the first three values
             if not product_id:
                 continue
             stock_info = self.get_product_stock_info(product_id)
