@@ -1,27 +1,41 @@
 import os
 import sys
-from admin_panel import AdminPanel
+import logging
+from flask import Flask, render_template, jsonify
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler("web.log"),
+              logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
-NOTIFICATION_BOT_TOKEN = os.environ.get("NOTIFICATION_BOT_TOKEN")
+FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
+NOTIFICATION_BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 try:
-    # Create the admin panel with notification token for testing functionality
-    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
+    # Import directly from admin_panel.py
+    import admin_panel
     
-    # Expose the Flask app for Gunicorn
-    app = panel.app
+    # Get the Flask app instance
+    app = admin_panel.app
+    
+    logger.info("Successfully imported Flask app from admin_panel")
 except Exception as e:
-    print(f"Error initializing web app: {e}")
+    logger.error(f"Error initializing web app: {e}")
     # For local development, re-raise
     if 'gunicorn' not in sys.modules:
         raise
     
     # For Gunicorn, create a simple fallback app
-    from flask import Flask, jsonify
+    logger.info("Creating fallback Flask app")
     app = Flask(__name__)
+    app.secret_key = FLASK_SECRET_KEY
     
     @app.route('/')
     def error_page():
@@ -30,4 +44,4 @@ except Exception as e:
 if __name__ == "__main__":
     # For local development only
     port = int(os.environ.get("PORT", 5000))
-    panel.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)

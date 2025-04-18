@@ -34,27 +34,51 @@ class SeleniumMonitor:
     
     def create_driver(self):
         """Create a Heroku-compatible Chrome driver with necessary options"""
-        logger.debug("Creating new Chrome driver for Heroku")
+        import os
+        import logging
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
+        
+        logger = logging.getLogger(__name__)
+        logger.info("Creating new Chrome driver for Heroku")
         
         options = Options()
         
-        # Check if running on Heroku (look for dyno environment)
+        # Check if running on Heroku
         is_heroku = os.environ.get('DYNO') is not None
         
         if is_heroku:
-            # REQUIRED for Heroku with new buildpack
-            options.binary_location = os.environ.get("GOOGLE_CHROME_SHIM", None)
-            if not options.binary_location:
-                # Fall back to the old environment variable
-                options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
+            logger.info("Running on Heroku, using appropriate Chrome settings")
+            # Try different environment variable names for Chrome binary
+            chrome_path = None
+            
+            # For the new Chrome for Testing buildpack
+            if os.environ.get("GOOGLE_CHROME_SHIM"):
+                chrome_path = os.environ.get("GOOGLE_CHROME_SHIM")
+                logger.info(f"Using GOOGLE_CHROME_SHIM: {chrome_path}")
                 
+            # For the older Chrome buildpack
+            elif os.environ.get("GOOGLE_CHROME_BIN"):
+                chrome_path = os.environ.get("GOOGLE_CHROME_BIN")
+                logger.info(f"Using GOOGLE_CHROME_BIN: {chrome_path}")
+                
+            # For Chrome for Testing buildpack with newer environment variable
+            elif os.environ.get("CHROME_PATH"):
+                chrome_path = os.environ.get("CHROME_PATH")
+                logger.info(f"Using CHROME_PATH: {chrome_path}")
+            
+            if chrome_path:
+                options.binary_location = chrome_path
+            else:
+                logger.warning("No Chrome binary path found in environment variables")
+            
+            # These are required for running Chrome on Heroku
             options.add_argument("--headless")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--no-sandbox")
+        else:
+            logger.info("Running in local environment")
         
         # Stealth settings to avoid detection
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -73,7 +97,7 @@ class SeleniumMonitor:
         # Most important for speed
         options.page_load_strategy = 'eager'
         
-        # Network optimizations
+        # Network optimizations - disable images, plugins, etc.
         prefs = {
             'profile.default_content_setting_values': {
                 'images': 2,                # Disable images
@@ -96,22 +120,21 @@ class SeleniumMonitor:
         options.add_experimental_option('prefs', prefs)
         
         try:
-            # Create the driver - with different approaches for Heroku vs local
+            # Find ChromeDriver path on Heroku (for older buildpack)
+            chromedriver_path = None
             if is_heroku:
-                # Get the chromedriver path from Heroku environment
-                chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
-                
-                if chromedriver_path:
-                    # Legacy approach
-                    service = Service(executable_path=chromedriver_path)
-                    driver = webdriver.Chrome(service=service, options=options)
-                else:
-                    # New approach - Chrome for Testing buildpack should handle paths
-                    driver = webdriver.Chrome(options=options)
-            else:
-                # Local development - use webdriver_manager
-                service = Service(ChromeDriverManager().install())
+                if os.environ.get("CHROMEDRIVER_PATH"):
+                    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+                    logger.info(f"Using CHROMEDRIVER_PATH: {chromedriver_path}")
+            
+            # Create the driver
+            if chromedriver_path:
+                logger.info(f"Creating Chrome driver with explicit path: {chromedriver_path}")
+                service = Service(executable_path=chromedriver_path)
                 driver = webdriver.Chrome(service=service, options=options)
+            else:
+                logger.info("Creating Chrome driver with auto-detection")
+                driver = webdriver.Chrome(options=options)
             
             # Apply undetectable settings after driver creation
             driver.execute_cdp_cmd('Network.setUserAgentOverride', {
@@ -128,9 +151,9 @@ class SeleniumMonitor:
                 '''
             })
             
-            logger.debug("Chrome driver created successfully")
+            logger.info("Chrome driver created successfully")
             return driver
-        
+            
         except Exception as e:
             logger.error(f"Failed to create driver: {str(e)}")
             raise
