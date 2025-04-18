@@ -1,51 +1,59 @@
-import sqlite3
 import os
+import psycopg2
+import sqlite3
 from datetime import datetime, timedelta
 
+# Parse DB URL for Heroku PostgreSQL
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///popmart.db")
+
+# Fix for Heroku PostgreSQL URL format change
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 class Database:
     def __init__(self):
-        # Use SQLite for local development or PostgreSQL for Heroku
         self.conn = self._get_connection()
         self._create_tables()
     
     def _get_connection(self):
+        """Create a database connection based on the URL"""
         if DATABASE_URL.startswith("sqlite"):
-            return sqlite3.connect(DATABASE_URL.replace("sqlite:///", ""), check_same_thread=False)
+            # SQLite connection
+            db_path = DATABASE_URL.replace("sqlite:///", "")
+            return sqlite3.connect(db_path, check_same_thread=False)
         else:
-            # For Heroku PostgreSQL
-            import psycopg2
+            # PostgreSQL connection
             return psycopg2.connect(DATABASE_URL)
     
     def _create_tables(self):
+        """Create necessary tables if they don't exist"""
         cursor = self.conn.cursor()
         
-        # Users table
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            balance REAL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
-        
-        # Products table
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            product_id TEXT PRIMARY KEY,
-            product_name TEXT,
-            global_link TEXT,
-            au_link TEXT,
-            price REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
-        
-        # User Monitoring table - PostgreSQL uses SERIAL instead of AUTOINCREMENT
         if DATABASE_URL.startswith("sqlite"):
-            # For SQLite
+            # SQLite schema
+            # Users table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                balance REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+            
+            # Products table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS products (
+                product_id TEXT PRIMARY KEY,
+                product_name TEXT,
+                global_link TEXT,
+                au_link TEXT,
+                price REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+            
+            # User Monitoring table
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_monitoring (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,17 +66,44 @@ class Database:
             )
             ''')
         else:
-            # For PostgreSQL
+            # PostgreSQL schema
+            # Use PostgreSQL's IF NOT EXISTS functionality
             cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_monitoring (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER,
-                product_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                expiry_date TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id),
-                FOREIGN KEY (product_id) REFERENCES products (product_id)
-            )
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'users') THEN
+                    CREATE TABLE users (
+                        user_id INTEGER PRIMARY KEY,
+                        username TEXT,
+                        balance REAL DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'products') THEN
+                    CREATE TABLE products (
+                        product_id TEXT PRIMARY KEY,
+                        product_name TEXT,
+                        global_link TEXT,
+                        au_link TEXT,
+                        price REAL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_monitoring') THEN
+                    CREATE TABLE user_monitoring (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER,
+                        product_id TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expiry_date TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (product_id) REFERENCES products (product_id)
+                    );
+                END IF;
+            END
+            $$;
             ''')
         
         self.conn.commit()
@@ -78,13 +113,11 @@ class Database:
         cursor = self.conn.cursor()
         
         if DATABASE_URL.startswith("sqlite"):
-            # SQLite syntax
             cursor.execute(
                 "INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)",
                 (user_id, username)
             )
         else:
-            # PostgreSQL syntax
             cursor.execute("""
                 INSERT INTO users (user_id, username) 
                 VALUES (%s, %s)
@@ -126,13 +159,11 @@ class Database:
         cursor = self.conn.cursor()
         
         if DATABASE_URL.startswith("sqlite"):
-            # SQLite syntax
             cursor.execute(
                 "INSERT OR REPLACE INTO products (product_id, product_name, global_link, au_link, price) VALUES (?, ?, ?, ?, ?)",
                 (product_id, product_name, global_link, au_link, price)
             )
         else:
-            # PostgreSQL syntax
             cursor.execute("""
                 INSERT INTO products (product_id, product_name, global_link, au_link, price) 
                 VALUES (%s, %s, %s, %s, %s)
@@ -261,6 +292,6 @@ class Database:
             FROM products p
             JOIN user_monitoring um ON p.product_id = um.product_id
             WHERE um.expiry_date > CURRENT_TIMESTAMP
-            GROUP BY p.product_id
+            GROUP BY p.product_id, p.product_name, p.global_link, p.au_link
         """)
         return cursor.fetchall()

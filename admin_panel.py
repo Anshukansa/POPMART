@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from database import Database
 import os
 
@@ -46,7 +46,7 @@ class AdminPanel:
             amount = float(request.form.get('amount', 0))
             
             if user_id and amount > 0:
-                self.db.update_balance(user_id, amount)
+                self.db.update_balance(int(user_id), amount)
                 flash(f'Added ${amount:.2f} to user {user_id}')
             
             return redirect(url_for('dashboard'))
@@ -64,6 +64,11 @@ class AdminPanel:
                 flash(f'Added product {product_name}')
             
             return redirect(url_for('dashboard'))
+        
+        # Health check endpoint for Heroku
+        @self.app.route('/health')
+        def health():
+            return jsonify({"status": "ok"}), 200
     
     def get_all_users(self):
         cursor = self.db.conn.cursor()
