@@ -35,13 +35,26 @@ class SeleniumMonitor:
     def create_driver(self):
         """Create a Heroku-compatible Chrome driver with necessary options"""
         logger.debug("Creating new Chrome driver for Heroku")
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+        
         options = Options()
         
-        # REQUIRED for Heroku
-        options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
-        options.add_argument("--headless")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--no-sandbox")
+        # Check if running on Heroku (look for dyno environment)
+        is_heroku = os.environ.get('DYNO') is not None
+        
+        if is_heroku:
+            # REQUIRED for Heroku with new buildpack
+            options.binary_location = os.environ.get("GOOGLE_CHROME_SHIM", None)
+            if not options.binary_location:
+                # Fall back to the old environment variable
+                options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
+                
+            options.add_argument("--headless")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--no-sandbox")
         
         # Stealth settings to avoid detection
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -82,15 +95,23 @@ class SeleniumMonitor:
         }
         options.add_experimental_option('prefs', prefs)
         
-        # Get the chromedriver path from Heroku environment
-        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
-        
         try:
-            # Create the driver with Heroku path or default
-            if chromedriver_path:
-                driver = webdriver.Chrome(executable_path=chromedriver_path, options=options)
+            # Create the driver - with different approaches for Heroku vs local
+            if is_heroku:
+                # Get the chromedriver path from Heroku environment
+                chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+                
+                if chromedriver_path:
+                    # Legacy approach
+                    service = Service(executable_path=chromedriver_path)
+                    driver = webdriver.Chrome(service=service, options=options)
+                else:
+                    # New approach - Chrome for Testing buildpack should handle paths
+                    driver = webdriver.Chrome(options=options)
             else:
-                driver = webdriver.Chrome(options=options)
+                # Local development - use webdriver_manager
+                service = Service(ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
             
             # Apply undetectable settings after driver creation
             driver.execute_cdp_cmd('Network.setUserAgentOverride', {
@@ -109,7 +130,7 @@ class SeleniumMonitor:
             
             logger.debug("Chrome driver created successfully")
             return driver
-            
+        
         except Exception as e:
             logger.error(f"Failed to create driver: {str(e)}")
             raise

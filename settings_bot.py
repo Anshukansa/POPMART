@@ -1,5 +1,28 @@
-import telebot
-from telebot import types
+# Import telebot with error handling
+try:
+    import telebot
+    from telebot import types
+except ImportError:
+    # For debugging purposes, print a clear message
+    import sys
+    print("ERROR: Failed to import telebot. Make sure PyTelegramBotAPI is installed properly.", file=sys.stderr)
+    # Create a simple fallback class
+    class telebot:
+        class TeleBot:
+            def __init__(self, *args, **kwargs):
+                pass
+            def polling(self, *args, **kwargs):
+                pass
+    class types:
+        class InlineKeyboardMarkup:
+            def __init__(self):
+                pass
+            def row(self, *args):
+                return self
+        class InlineKeyboardButton:
+            def __init__(self, *args, **kwargs):
+                pass
+
 from database import Database
 
 class SettingsBot:
@@ -139,4 +162,8 @@ class SettingsBot:
         self.bot.send_message(chat_id, message, reply_markup=markup)
     
     def run(self):
-        self.bot.polling(none_stop=True)
+        try:
+            self.bot.polling(none_stop=True)
+        except Exception as e:
+            import sys
+            print(f"Error in bot polling: {e}", file=sys.stderr)

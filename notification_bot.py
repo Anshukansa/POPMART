@@ -4,6 +4,14 @@ import time
 import json
 from database import Database
 
+# Import telebot directly - this is the fix
+try:
+    import telebot
+except ImportError:
+    # Fallback for direct HTTP API use
+    telebot = None
+    logging.warning("Could not import telebot module, falling back to HTTP API")
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -68,8 +76,9 @@ class NotificationBot:
             
             logger.info(f"Stock notification for {product_name} sent to {sent_count}/{len(chat_ids)} subscribers")
             
-            # Update notification log in database
-            self.db.log_notification(product_id, store_type, len(chat_ids), sent_count)
+            # If database has this method
+            if hasattr(self.db, 'log_notification'):
+                self.db.log_notification(product_id, store_type, len(chat_ids), sent_count)
             
         except Exception as e:
             logger.error(f"Error sending stock notification for product {product_name}: {str(e)}")
