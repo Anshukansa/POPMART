@@ -19,12 +19,11 @@ logger = logging.getLogger(__name__)
 
 class GlobalMonitor:
     def __init__(self, notification_bot_token):
-        self.db = Database()
-        self.notification_bot = NotificationBot(notification_bot_token)
+        self.db = Database()  # Connect to your database
+        self.notification_bot = NotificationBot(notification_bot_token)  # Connect to notification bot
 
     def extract_product_id_from_url(self, url):
         """Extract product ID from URL like https://www.popmart.com/au/products/643/PRODUCT-NAME"""
-        # Pattern to extract product ID
         pattern = r'/products/(\d+)/'
         match = re.search(pattern, url)
         if match:
@@ -144,9 +143,7 @@ class GlobalMonitor:
             return
         logger.info(f"Checking {len(monitored_products)} monitored products")
         for product in monitored_products:
-            # Ensure that we unpack only the expected number of columns
             if len(product) != 3:
-                # Log or handle the extra columns appropriately
                 logger.warning(f"Skipping product due to unexpected data structure: {product}")
                 continue
             product_id, product_name, global_link = product[:3]
@@ -180,3 +177,8 @@ class GlobalMonitor:
         is_in_stock = stock_info["in_stock"]
         product_title = stock_info.get("title", "Unknown Product")
         return {"success": True, "product_name": product_name, "product_title": product_title, "in_stock": is_in_stock, "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"}
+
+# Example usage:
+# notification_bot_token = "YOUR_BOT_TOKEN"
+# global_monitor = GlobalMonitor(notification_bot_token)
+# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock status
