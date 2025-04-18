@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 import os
 import logging
-from selenium_monitor import SeleniumMonitor
+from monitors.selenium_monitor import SeleniumMonitor
 
 # Set up logging
 logging.basicConfig(

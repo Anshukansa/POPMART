@@ -3,7 +3,7 @@ import time
 import sys
 import logging
 import argparse
-from selenium_monitor import SeleniumMonitor
+from monitors.selenium_monitor import SeleniumMonitor
 
 # Set up logging
 logging.basicConfig(
