@@ -43,6 +43,10 @@ def run_monitors():
     else:
         print("Notification bot token not found!")
 
+# Create the admin panel and expose its Flask app for Gunicorn
+panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD)
+app = panel.app  # Expose the Flask app for Gunicorn
+
 if __name__ == "__main__":
     # Start settings bot in a separate thread
     settings_bot_thread = threading.Thread(target=run_settings_bot)
@@ -55,4 +59,4 @@ if __name__ == "__main__":
     monitors_thread.start()
     
     # Run admin panel in the main thread
-    run_admin_panel()
+    panel.run()
