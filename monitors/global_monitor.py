@@ -1,238 +1,278 @@
-import hashlib
-import json
 import time
-import requests
-import re
+import json
 import logging
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 from database import Database
 from notification_bot import NotificationBot
-from requests.exceptions import HTTPError
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("popmart_global_monitor.log"),
+    handlers=[logging.FileHandler("popmart_monitor.log"),
               logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
-class GlobalMonitor:
+class PopMartFastMonitor:
     def __init__(self, notification_bot_token):
-        logger.info("Initializing GlobalMonitor")
+        logger.info("Initializing PopMartFastMonitor")
         self.db = Database()  # Connect to your database
         self.notification_bot = NotificationBot(notification_bot_token)  # Connect to notification bot
-        logger.info("GlobalMonitor initialized successfully")
-
-    def extract_product_id_from_url(self, url):
-        """Extract product ID from URL like https://www.popmart.com/au/products/938 or with trailing slash"""
-        logger.debug(f"Extracting product ID from URL: {url}")
+        self.product_status = {}
+        self.executor = None  # Will initialize when we know how many products
+        self.drivers = {}
+        logger.info("PopMartFastMonitor initialized successfully")
         
-        # Updated pattern to handle URLs with or without trailing slash
-        pattern = r'/products/(\d+)(?:/|$)'
-        match = re.search(pattern, url)
+    def create_driver(self):
+        """Create a highly optimized, undetectable driver"""
+        logger.debug("Creating Chrome driver")
+        options = Options()
+        options.headless = True
         
-        if match:
-            product_id = match.group(1)
-            logger.debug(f"Successfully extracted product ID: {product_id} from URL: {url}")
-            return product_id
-            
-        if url and isinstance(url, str) and url.isdigit():
-            logger.debug(f"URL is directly a numeric ID: {url}")
-            return url  # If URL is directly an ID (like "938")
-            
-        logger.error(f"Could not extract product ID from URL: {url}")
-        return None
-
-    def generate_signature(self, params, timestamp, method="get"):
-        """Generate the signature ('s' parameter) for PopMart API"""
-        logger.debug(f"Generating signature for params: {params}, timestamp: {timestamp}")
+        # Stealth settings to avoid detection
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        options.add_experimental_option('useAutomationExtension', False)
         
-        # Simplified signature generation (based on working code)
-        salt = "W_ak^moHpMla"
-        json_string = json.dumps(params, separators=(',', ':'))
-        string_to_hash = f"{json_string}{salt}{timestamp}"
-        signature = hashlib.md5(string_to_hash.encode('utf-8')).hexdigest()
+        # Performance optimizations
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-infobars')
+        options.add_argument('--mute-audio')
+        options.add_argument('--window-size=1280,720')
+        options.add_argument('--blink-settings=imagesEnabled=false')
+        options.add_argument('--disable-notifications')
         
-        logger.debug(f"Generated signature: {signature}")
-        return signature
-
-    def make_api_request_with_retry(self, endpoint, params, method="get", country="AU", language="en", retries=3):
-        """Make an API request with retry logic"""
-        logger.debug(f"Making API request to {endpoint} with retries={retries}")
+        # Most important for speed
+        options.page_load_strategy = 'eager'
         
-        for attempt in range(retries):
-            try:
-                logger.debug(f"Attempt {attempt + 1}/{retries} for endpoint: {endpoint}")
-                return self.make_api_request(endpoint, params, method, country, language)
-            except Exception as e:
-                logger.error(f"Attempt {attempt + 1}: Error for {endpoint}: {str(e)}")
-                if attempt < retries - 1:
-                    retry_delay = 5
-                    logger.debug(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                else:
-                    logger.error(f"Max retries reached for {endpoint}")
-                
-        logger.error(f"Failed after {retries} retries for endpoint: {endpoint}")
-        return {"error": f"Failed after {retries} retries", "data": None}
-
-    def make_api_request(self, endpoint, params, method="get", country="AU", language="en"):
-        """Make an API request to PopMart API - Updated with working implementation"""
-        base_url = "https://prod-global-api.popmart.com"
-        url = f"{base_url}{endpoint}"
-        
-        logger.debug(f"Making {method.upper()} request to {url} with params: {params}")
-        
-        timestamp = str(int(time.time()))
-        signature = self.generate_signature(params, timestamp, method)
-        
-        request_params = params.copy()
-        request_params["s"] = signature
-        request_params["t"] = timestamp
-        
-        # Updated headers based on working implementation
-        headers = {
-            "accept": "application/json, text/plain, */*",
-            "accept-language": f"en-{country},en-US;q=0.9,en;q=0.8",
-            "clientkey": "rmdxjisjk7gwykcix",
-            "country": country,
-            "language": language,
-            "origin": "https://www.popmart.com",
-            "referer": "https://www.popmart.com/",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-            "x-client-country": country,
-            "x-client-namespace": "eurasian", 
-            "x-device-os-type": "web",
-            "x-project-id": "eude"
+        # Network optimizations
+        prefs = {
+            'profile.default_content_setting_values': {
+                'images': 2,                # Disable images
+                'plugins': 2,               # Disable plugins
+                'popups': 2,                # Disable popups
+                'geolocation': 2,           # Disable geolocation
+                'notifications': 2,         # Disable notifications
+                'auto_select_certificate': 2, # Disable SSL cert selection
+                'fullscreen': 2,            # Disable fullscreen permission
+                'mouselock': 2,             # Disable mouse lock permission
+                'mixed_script': 2,          # Disable mixed script
+                'media_stream': 2,          # Disable media stream
+                'media_stream_mic': 2,      # Disable mic permission
+                'media_stream_camera': 2,   # Disable camera permission
+                'automatic_downloads': 2    # Disable multiple downloads
+            },
+            'disk-cache-size': 4096,        # Limit cache size
+            'disable-application-cache': True,
         }
+        options.add_experimental_option('prefs', prefs)
         
-        logger.debug(f"Request headers: {headers}")
+        driver = webdriver.Chrome(options=options)
+        
+        # Apply undetectable settings after driver creation
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                })
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                })
+            '''
+        })
+        
+        logger.debug("Chrome driver created successfully")
+        return driver
+    
+    def check_product(self, db_info):
+        """Check a single product with early termination once data is found"""
+        db_product_id = db_info["db_product_id"]
+        product_name = db_info["product_name"]
+        url = db_info["global_link"]
+        
+        logger.info(f"Checking product: {product_name} (ID: {db_product_id}, URL: {url})")
+        
+        # Extract API product ID for logging purposes
+        api_product_id = url.split('/')[-1].split('%')[0]
+        
+        # Create driver if it doesn't exist for this URL
+        if url not in self.drivers:
+            try:
+                self.drivers[url] = self.create_driver()
+            except Exception as e:
+                logger.error(f"Error creating driver for {url}: {str(e)}")
+                return {
+                    "db_product_id": db_product_id,
+                    "product_name": product_name,
+                    "title": "Error - Driver Creation Failed",
+                    "price": "Unknown",
+                    "status": "ERROR",
+                    "in_stock": False,
+                    "url": url,
+                    "api_product_id": api_product_id
+                }
+            
+        driver = self.drivers[url]
         
         try:
-            if method.lower() == "get":
-                logger.debug(f"Sending GET request to {url} with params: {request_params}")
-                response = requests.get(url, params=request_params, headers=headers, timeout=10)
+            # Navigate to the URL
+            driver.get(url)
+            
+            # Inject early termination script - stops page loading once we find what we need
+            early_termination_script = """
+                let titleFound = false;
+                let priceFound = false;
+                let stockStatusFound = false;
+                
+                // Create a MutationObserver to watch for our elements
+                const observer = new MutationObserver(function(mutations) {
+                    // Check if title exists
+                    if (!titleFound && document.querySelector('h1.index_title___0OsZ')) {
+                        titleFound = true;
+                    }
+                    
+                    // Check if price exists
+                    if (!priceFound && document.querySelector('div.index_price__cAj0h')) {
+                        priceFound = true;
+                    }
+                    
+                    // Check if stock status exists (either button)
+                    if (!stockStatusFound && 
+                        (document.querySelector('div.index_euBtn__7NmZ6, div.index_btn__w5nKF'))) {
+                        stockStatusFound = true;
+                    }
+                    
+                    // If we found all elements, stop loading the page
+                    if (titleFound && priceFound && stockStatusFound) {
+                        window.stop();
+                        observer.disconnect();
+                    }
+                });
+                
+                // Start observing the document
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true
+                });
+            """
+            
+            driver.execute_script(early_termination_script)
+            
+            # Wait for just the title element with a short timeout
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "h1.index_title___0OsZ"))
+                )
+            except Exception as e:
+                logger.warning(f"Timeout waiting for title element: {str(e)}")
+                # If we can't even get the title in 5 seconds, it's a problem
+                return {
+                    "db_product_id": db_product_id,
+                    "product_name": product_name,
+                    "title": "Error - Page Load Timeout",
+                    "price": "Unknown",
+                    "status": "ERROR",
+                    "in_stock": False,
+                    "url": url,
+                    "api_product_id": api_product_id
+                }
+            
+            # Extract data - don't wait for other elements, just try to get what's there
+            title = driver.find_element(By.CSS_SELECTOR, "h1.index_title___0OsZ").text
+            
+            try:
+                price = driver.find_element(By.CSS_SELECTOR, "div.index_price__cAj0h").text
+            except:
+                price = "Unknown Price"
+            
+            # Quick check for specific buttons 
+            add_cart_elements = driver.find_elements(By.XPATH, 
+                "//div[contains(@class, 'index_euBtn__7NmZ6') and contains(text(), 'ADD TO CART')]")
+            
+            notify_elements = driver.find_elements(By.XPATH, 
+                "//div[contains(@class, 'index_btn__w5nKF') and contains(text(), 'NOTIFY ME WHEN AVAILABLE')]")
+                
+            # Determine stock status
+            if add_cart_elements:
+                status = "IN STOCK"
+                in_stock = True
+            elif notify_elements:
+                status = "OUT OF STOCK"
+                in_stock = False
             else:
-                logger.debug(f"Sending POST request to {url} with JSON body: {request_params}")
-                response = requests.post(url, json=request_params, headers=headers, timeout=10)
-            
-            # Don't raise_for_status() - just try to parse JSON like the working version
-            response_data = response.json()
-            logger.debug(f"Received response: Status {response.status_code}")
-            
-            # Log any error messages from the API response
-            if isinstance(response_data, dict) and response_data.get('code') != 200:
-                logger.warning(f"API returned non-success code: {response_data.get('code')}, message: {response_data.get('message')}")
+                # Quick extra check with direct JavaScript as a fallback
+                buttons_js = driver.execute_script("""
+                    const addToCartBtn = document.querySelector('div.index_euBtn__7NmZ6');
+                    if (addToCartBtn && addToCartBtn.textContent.includes('ADD TO CART')) return 'IN STOCK';
+                    
+                    const notifyBtn = document.querySelector('div.index_btn__w5nKF'); 
+                    if (notifyBtn && notifyBtn.textContent.includes('NOTIFY ME WHEN AVAILABLE')) return 'OUT OF STOCK';
+                    
+                    return 'UNKNOWN';
+                """)
                 
-            return response_data
+                status = buttons_js
+                in_stock = status == "IN STOCK"
             
-        except Exception as e:
-            logger.error(f"Request Error: {str(e)}")
-            # Log full details of the error for debugging
-            logger.exception("Detailed exception info:")
-            return {"error": str(e), "data": None}
-
-    def get_product_stock_info(self, product_id_or_url, country="AU", language="en"):
-        """Get stock information for a specific product - Updated with working implementation"""
-        try:
-            logger.info(f"Getting stock info for product: {product_id_or_url} in {country}")
-            
-            # Extract product ID from URL if necessary
-            api_product_id = None
-            if isinstance(product_id_or_url, str):
-                if '/' in product_id_or_url:
-                    # This is a URL, extract the product ID
-                    api_product_id = self.extract_product_id_from_url(product_id_or_url)
-                    logger.info(f"Extracted product ID {api_product_id} from URL {product_id_or_url}")
-                else:
-                    # This might be a direct product ID
-                    api_product_id = product_id_or_url
-                    logger.info(f"Using direct product ID: {api_product_id}")
-            
-            if not api_product_id:
-                logger.error(f"Failed to determine product ID from: {product_id_or_url}")
-                return None
+            logger.info(f"Product '{title}' (ID: {db_product_id}) in_stock: {in_stock}")
                 
-            logger.info(f"Querying product details for ID: {api_product_id}")
-            endpoint = "/shop/v1/shop/productDetails"
-            params = {"spuId": api_product_id}
-            
-            details = self.make_api_request_with_retry(endpoint, params, country=country, language=language)
-            
-            if "error" in details:
-                logger.error(f"Error getting product details: {details['error']}")
-                return None
-                
-            if "data" not in details or not details["data"]:
-                logger.error(f"No data returned for product {api_product_id}")
-                return None
-                
-            product_data = details["data"]
-            logger.debug(f"Received product data: {json.dumps(product_data, indent=2)[:500]}...")  # Log first 500 chars
-            
-            # Try to get stock information from different possible structures
-            skus = product_data.get("skus", [])
-            if not skus and "goods" in product_data:
-                logger.debug("No 'skus' found, using 'goods' field instead")
-                skus = product_data.get("goods", [])
-                
-            logger.debug(f"Found {len(skus)} SKUs for product {api_product_id}")
-            
-            # Log individual SKU stock information for debugging
-            for i, sku in enumerate(skus):
-                stock_info = sku.get("stock", {})
-                online_stock = stock_info.get("onlineStock", 0)
-                logger.debug(f"SKU #{i+1}: onlineStock={online_stock}, sku_id={sku.get('id', 'unknown')}")
-                
-            in_stock = any(sku.get("stock", {}).get("onlineStock", 0) > 0 for sku in skus)
-            product_title = product_data.get("title", "Unknown")
-            
-            logger.info(f"Product '{product_title}' (ID: {api_product_id}) in_stock: {in_stock}")
-            
             return {
-                "product_id": product_id_or_url,  # Keep original ID for DB operations
-                "api_product_id": api_product_id,  # Keep API product ID 
-                "title": product_title,
+                "db_product_id": db_product_id,
+                "product_name": product_name,
+                "title": title,
+                "price": price,
+                "status": status,
                 "in_stock": in_stock,
-                "skus": [
-                    {
-                        "sku_id": sku.get("id"),
-                        "sku_title": sku.get("title"),
-                        "sku_code": sku.get("skuCode"),
-                        "price": sku.get("price"),
-                        "discount_price": sku.get("discountPrice"),
-                        "currency": sku.get("currency"),
-                        "stock": sku.get("stock", {}).get("onlineStock", 0),
-                        "lock_stock": sku.get("stock", {}).get("onlineLockStock", 0)
-                    } for sku in skus
-                ]
+                "url": url,
+                "api_product_id": api_product_id
             }
             
         except Exception as e:
-            logger.error(f"Error getting stock for product {product_id_or_url}: {str(e)}")
-            logger.exception("Detailed exception info:")
-            return None
-
+            logger.error(f"Error checking {url}: {str(e)}")
+            return {
+                "db_product_id": db_product_id,
+                "product_name": product_name,
+                "title": "Error",
+                "price": "Error",
+                "status": "ERROR",
+                "in_stock": False,
+                "url": url,
+                "api_product_id": api_product_id,
+                "error": str(e)
+            }
+    
     def check_all_monitored_products(self):
-        """Check stock for all monitored products"""
+        """Check stock for all monitored products using web scraping"""
         try:
             monitored_products = self.db.get_all_active_monitoring()
             
             if not monitored_products:
                 logger.info("No products being monitored")
-                return
+                return []
                 
             logger.info(f"Checking {len(monitored_products)} monitored products")
             
+            # Build the list of products to check with DB info
+            products_to_check = []
+            
             for product in monitored_products:
                 try:
-                    # Log the full product data from database for debugging
-                    logger.debug(f"Processing product from DB: {product}")
-                    
                     # Ensure that we unpack only the expected number of columns
                     if len(product) < 3:
-                        # Log or handle the incorrect columns appropriately
                         logger.warning(f"Skipping product due to unexpected data structure: {product}")
                         continue
                         
@@ -241,119 +281,186 @@ class GlobalMonitor:
                     if not global_link:
                         logger.warning(f"No global link for product {product_name} (DB ID: {db_product_id})")
                         continue
-                        
-                    # Extract the proper product ID from the global link
-                    api_product_id = self.extract_product_id_from_url(global_link)
                     
-                    if not api_product_id:
-                        logger.warning(f"Could not extract product ID from global link: {global_link}")
-                        # Fall back to the database ID if we can't extract from URL
-                        api_product_id = db_product_id
-                        logger.info(f"Using database ID {api_product_id} as fallback")
-                        
-                    logger.info(f"Checking stock for {product_name} (DB ID: {db_product_id}, API ID: {api_product_id}, Link: {global_link})")
+                    # Add to the list of products to check
+                    products_to_check.append({
+                        "db_product_id": db_product_id,
+                        "product_name": product_name,
+                        "global_link": global_link
+                    })
                     
-                    # Use AU as country instead of GLOBAL (based on working code)
-                    stock_info = self.get_product_stock_info(api_product_id, country="AU")
-                    
-                    if not stock_info:
-                        logger.warning(f"[AU] Could not get stock info for {product_name} (API ID: {api_product_id})")
-                        continue
-                        
-                    is_in_stock = stock_info["in_stock"]
-                    product_title = stock_info.get("title", product_name)
-                    
-                    # Log the details we're about to use for notification decisions
-                    logger.debug(f"Product details: DB name={product_name}, DB ID={db_product_id}, API title={product_title}, in_stock={is_in_stock}")
-                    
-                    # IMPORTANT: Use the database product ID for database operations, not the API product ID
-                    should_notify = self.db.should_notify_stock_change(db_product_id, "AU", is_in_stock)
-                    
-                    if is_in_stock:
-                        if should_notify:
-                            logger.info(f"[AU] {product_name} is now in stock! Sending notifications.")
-                            self.notification_bot.send_stock_notification(db_product_id, product_name, global_link, is_global=False)
-                            logger.info(f"[AU] Notifications sent for {product_name}.")
-                        else:
-                            logger.info(f"[AU] {product_name} is still in stock. No notifications sent.")
-                    else:
-                        logger.info(f"[AU] {product_name} is out of stock.")
-                        
                 except Exception as e:
                     logger.error(f"Error processing product {product}: {str(e)}")
-                    logger.exception("Detailed exception info:")
                     continue
+            
+            # Initialize executor if needed with the count of products
+            if self.executor is None or self.executor._max_workers < len(products_to_check):
+                if self.executor is not None:
+                    self.executor.shutdown(wait=False)
+                self.executor = ThreadPoolExecutor(max_workers=len(products_to_check))
+                logger.debug(f"Initialized thread pool with {len(products_to_check)} workers")
+            
+            # Execute checks in parallel
+            futures = [self.executor.submit(self.check_product, product_info) for product_info in products_to_check]
+            results = [future.result() for future in futures]
+            
+            # Process results and update database/send notifications
+            for result in results:
+                try:
+                    db_product_id = result["db_product_id"]
+                    product_name = result["product_name"]
+                    status = result["status"]
+                    in_stock = result["in_stock"]
+                    url = result["url"]
                     
+                    if status != "ERROR":
+                        # Update the product status in our tracking
+                        api_product_id = result["api_product_id"]
+                        self.product_status[api_product_id] = {
+                            'db_product_id': db_product_id,
+                            'title': result['title'],
+                            'price': result['price'],
+                            'status': status,
+                            'in_stock': in_stock,
+                            'url': url,
+                            'last_checked': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                        
+                        # Check if we should notify based on stock status change
+                        should_notify = self.db.should_notify_stock_change(db_product_id, "AU", in_stock)
+                        
+                        if in_stock:
+                            if should_notify:
+                                logger.info(f"[AU] {product_name} is now in stock! Sending notifications.")
+                                self.notification_bot.send_stock_notification(db_product_id, product_name, url, is_global=False)
+                                logger.info(f"[AU] Notifications sent for {product_name}.")
+                            else:
+                                logger.info(f"[AU] {product_name} is still in stock. No notifications sent.")
+                        else:
+                            logger.info(f"[AU] {product_name} is out of stock.")
+                except Exception as e:
+                    logger.error(f"Error processing result {result}: {str(e)}")
+            
+            return results
+                
         except Exception as e:
             logger.error(f"Error in check_all_monitored_products: {str(e)}")
             logger.exception("Detailed exception info:")
-
-    def check_product(self, product_id_or_url):
+            return []
+    
+    def check_product_stock(self, product_id_or_url):
         """Check stock for a specific product (for admin testing)"""
         logger.info(f"Admin testing stock check for: {product_id_or_url}")
         
         try:
-            # Extract product ID from URL if necessary
-            api_product_id = product_id_or_url
-            if isinstance(product_id_or_url, str) and '/' in product_id_or_url:
-                api_product_id = self.extract_product_id_from_url(product_id_or_url)
-                logger.info(f"Extracted product ID: {api_product_id} from URL: {product_id_or_url}")
-                
-            if not api_product_id:
-                logger.error(f"Invalid URL format, could not extract product ID: {product_id_or_url}")
-                return {"success": False, "message": "Invalid URL format, could not extract product ID"}
-                
             # Try to get product info from database
             product = self.db.get_product(product_id_or_url)  # Use original ID for DB lookup
+            if not product:
+                logger.warning(f"Product not found in database: {product_id_or_url}")
+                return {"success": False, "message": "Product not found in database"}
+                
             db_product_id = product_id_or_url
             product_name = product[1] if product else f"Product {db_product_id}"
-            logger.info(f"Retrieved product from DB: {product_name} (ID: {db_product_id})")
+            global_link = product[2] if len(product) > 2 else None
             
-            # Check stock status using the AU region and API product ID
-            stock_info = self.get_product_stock_info(api_product_id, country="AU")
+            if not global_link:
+                logger.error(f"No global link for product {product_name} (ID: {db_product_id})")
+                return {"success": False, "message": "No global link found for product"}
             
-            if not stock_info:
-                logger.error(f"Could not check stock status for {api_product_id}")
-                return {"success": False, "message": "Could not check stock status"}
-                
-            is_in_stock = stock_info["in_stock"]
-            product_title = stock_info.get("title", "Unknown Product")
+            logger.info(f"Retrieved product from DB: {product_name} (ID: {db_product_id}, Link: {global_link})")
             
-            # Format detailed SKU information for the dashboard
-            sku_details = []
-            for sku in stock_info.get("skus", []):
-                price = f"{float(sku['price'])/100:.2f}" if sku.get('price') else "N/A"
-                discount = f"{float(sku['discount_price'])/100:.2f}" if sku.get('discount_price') else "N/A"
-                
-                sku_details.append({
-                    "title": sku.get('sku_title', 'Unknown'),
-                    "id": sku.get('sku_id', 'Unknown'),
-                    "code": sku.get('sku_code', 'Unknown'),
-                    "price": f"{price} {sku.get('currency', 'AUD')}",
-                    "discount": f"{discount} {sku.get('currency', 'AUD')}",
-                    "stock": sku.get('stock', 0),
-                    "locked_stock": sku.get('lock_stock', 0)
-                })
+            # Check the product
+            product_info = {
+                "db_product_id": db_product_id,
+                "product_name": product_name,
+                "global_link": global_link
+            }
+            stock_result = self.check_product(product_info)
             
-            logger.info(f"Stock check result for {product_title} (ID: {api_product_id}): {'In Stock' if is_in_stock else 'Out of Stock'}")
+            if stock_result.get('status') == "ERROR":
+                logger.error(f"Error checking stock for {product_name}: {stock_result.get('error', 'Unknown error')}")
+                return {"success": False, "message": f"Error checking stock: {stock_result.get('error', 'Unknown error')}"}
+            
+            in_stock = stock_result.get('in_stock', False)
+            product_title = stock_result.get('title', product_name)
+            price = stock_result.get('price', 'Unknown Price')
+            
+            logger.info(f"Stock check result for {product_title} (ID: {db_product_id}): {'In Stock' if in_stock else 'Out of Stock'}")
             
             return {
                 "success": True, 
                 "product_name": product_name,
                 "product_title": product_title, 
-                "in_stock": is_in_stock,
-                "api_product_id": api_product_id,
-                "db_product_id": db_product_id,
-                "sku_details": sku_details,
-                "message": f"AU store: {'In Stock' if is_in_stock else 'Out of Stock'}"
+                "price": price,
+                "in_stock": in_stock,
+                "url": global_link,
+                "message": f"AU store: {'In Stock' if in_stock else 'Out of Stock'}"
             }
             
         except Exception as e:
-            logger.error(f"Error in check_product for {product_id_or_url}: {str(e)}")
+            logger.error(f"Error in check_product_stock for {product_id_or_url}: {str(e)}")
             logger.exception("Detailed exception info:")
             return {"success": False, "message": f"Error checking product: {str(e)}"}
+    
+    def save_status_to_file(self):
+        """Save current product status to file"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        try:
+            # Save to JSON for machine reading
+            with open('popmart_status.json', 'w') as f:
+                json.dump(self.product_status, f, indent=2)
+                
+            # Append to log file for human reading
+            with open('popmart_status.txt', 'a') as f:
+                f.write(f"\n{timestamp}\n")
+                for product_id, product in self.product_status.items():
+                    f.write(f"{product['title']}: {product['status']} - {product['price']}\n")
+            
+            logger.debug("Saved product status to files")
+        except Exception as e:
+            logger.error(f"Error saving status to file: {str(e)}")
+    
+    def run_monitoring_loop(self, check_interval=10):
+        """Run the monitor in a continuous loop"""
+        logger.info(f"Starting PopMart monitoring loop with {check_interval} second interval")
+        
+        try:
+            while True:
+                start_time = time.time()
+                
+                try:
+                    self.check_all_monitored_products()
+                    
+                    # Save status to file
+                    self.save_status_to_file()
+                except Exception as e:
+                    logger.error(f"Error in monitoring cycle: {str(e)}")
+                
+                # Calculate how long to wait until next check
+                elapsed = time.time() - start_time
+                wait_time = max(1, check_interval - elapsed)
+                
+                logger.info(f"Monitoring cycle completed in {elapsed:.2f}s, waiting {wait_time:.2f}s until next check")
+                time.sleep(wait_time)
+                
+        except KeyboardInterrupt:
+            logger.info("Monitoring stopped by user")
+        finally:
+            # Clean up resources
+            for url, driver in self.drivers.items():
+                try:
+                    driver.quit()
+                    logger.debug(f"Closed driver for {url}")
+                except Exception as e:
+                    logger.error(f"Error closing driver for {url}: {str(e)}")
+            
+            if self.executor:
+                self.executor.shutdown()
+                logger.debug("Shut down thread pool")
 
-# Example usage:
-# notification_bot_token = "YOUR_BOT_TOKEN"
-# global_monitor = GlobalMonitor(notification_bot_token)
-# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock status
+# Example usage in worker.py:
+# if __name__ == "__main__":
+#     notification_bot_token = "YOUR_BOT_TOKEN"
+#     monitor = PopMartFastMonitor(notification_bot_token)
+#     monitor.run_monitoring_loop(check_interval=10)
