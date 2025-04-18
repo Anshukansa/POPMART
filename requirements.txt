@@ -1,8 +1,9 @@
 Flask==2.3.3
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
-selenium==4.16.0
-Werkzeug==2.3.7
-python-telegram-bot==20.7
 requests==2.31.0
 python-dotenv==1.0.0
+PyTelegramBotAPI==4.14.0
+python-telegram-bot==20.7
+selenium==4.16.0
+webdriver-manager==4.0.1

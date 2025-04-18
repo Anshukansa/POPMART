@@ -1,6 +1,7 @@
 import time
 import json
 import logging
+import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from selenium import webdriver
@@ -21,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class SeleniumMonitor:
-    """Monitor PopMart products using Selenium web scraping"""
+    """Monitor PopMart products using Selenium web scraping - Heroku compatible"""
     
     def __init__(self, notification_bot_token):
         logger.info("Initializing SeleniumMonitor")
@@ -32,10 +33,15 @@ class SeleniumMonitor:
         logger.info("SeleniumMonitor initialized successfully")
     
     def create_driver(self):
-        """Create a highly optimized, undetectable driver"""
-        logger.debug("Creating new Chrome driver")
+        """Create a Heroku-compatible Chrome driver with necessary options"""
+        logger.debug("Creating new Chrome driver for Heroku")
         options = Options()
-        options.headless = True
+        
+        # REQUIRED for Heroku
+        options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
+        options.add_argument("--headless")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
         
         # Stealth settings to avoid detection
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -44,9 +50,7 @@ class SeleniumMonitor:
         
         # Performance optimizations
         options.add_argument('--disable-gpu')
-        options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-extensions')
-        options.add_argument('--no-sandbox')
         options.add_argument('--disable-infobars')
         options.add_argument('--mute-audio')
         options.add_argument('--window-size=1280,720')
@@ -78,25 +82,37 @@ class SeleniumMonitor:
         }
         options.add_experimental_option('prefs', prefs)
         
-        driver = webdriver.Chrome(options=options)
+        # Get the chromedriver path from Heroku environment
+        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
         
-        # Apply undetectable settings after driver creation
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            'source': '''
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                })
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                })
-            '''
-        })
-        
-        logger.debug("Chrome driver created successfully")
-        return driver
+        try:
+            # Create the driver with Heroku path or default
+            if chromedriver_path:
+                driver = webdriver.Chrome(executable_path=chromedriver_path, options=options)
+            else:
+                driver = webdriver.Chrome(options=options)
+            
+            # Apply undetectable settings after driver creation
+            driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            })
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': '''
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    })
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    })
+                '''
+            })
+            
+            logger.debug("Chrome driver created successfully")
+            return driver
+            
+        except Exception as e:
+            logger.error(f"Failed to create driver: {str(e)}")
+            raise
     
     def extract_product_id_from_url(self, url):
         """Extract product ID from URL for database operations"""
