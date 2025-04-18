@@ -2,180 +2,132 @@ import hashlib
 import json
 import time
 import requests
-import re
-import logging
-from database import Database
-from notification_bot import NotificationBot
-from requests.exceptions import HTTPError
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("popmart_global_monitor.log"),
-              logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
+def generate_signature(params, timestamp, method="get"):
+    """Generate the signature ('s' parameter) for PopMart API"""
+    salt = "W_ak^moHpMla"
+    json_string = json.dumps(params, separators=(',', ':'))
+    string_to_hash = f"{json_string}{salt}{timestamp}"
+    signature = hashlib.md5(string_to_hash.encode('utf-8')).hexdigest()
+    return signature
 
-class GlobalMonitor:
-    def __init__(self, notification_bot_token):
-        self.db = Database()
-        self.notification_bot = NotificationBot(notification_bot_token)
-
-    def extract_product_id_from_url(self, url):
-        """Extract product ID from URL like https://www.popmart.com/au/products/643/PRODUCT-NAME"""
-        # Pattern to extract product ID
-        pattern = r'/products/(\d+)/'
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-        if url.isdigit():
-            return url  # If URL is directly an ID (like "643")
-        logger.error(f"Could not extract product ID from URL: {url}")
-        return None
-
-    def generate_signature(self, params, timestamp, method="get"):
-        """Generate the signature ('s' parameter) for PopMart API"""
+def make_api_request(endpoint, params, method="get", country="AU", language="en"):
+    """Make an API request to PopMart API"""
+    base_url = "https://prod-global-api.popmart.com"
+    url = f"{base_url}{endpoint}"
+    
+    # Generate timestamp
+    timestamp = str(int(time.time()))
+    
+    # Generate signature
+    signature = generate_signature(params, timestamp, method)
+    
+    # Add signature and timestamp to parameters
+    request_params = params.copy()
+    request_params["s"] = signature
+    request_params["t"] = timestamp
+    
+    # Set headers
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": f"en-{country},en-US;q=0.9,en;q=0.8",
+        "clientkey": "rmdxjisjk7gwykcix",
+        "country": country,
+        "language": language,
+        "origin": "https://www.popmart.com",
+        "referer": "https://www.popmart.com/",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "x-client-country": country,
+        "x-client-namespace": "eurasian",
+        "x-device-os-type": "web",
+        "x-project-id": "eude",
+    }
+    
+    try:
         if method.lower() == "get":
-            filtered_params = {key: str(value) for key, value in params.items() if value}
+            response = requests.get(url, params=request_params, headers=headers)
         else:
-            filtered_params = params.copy()
-
-        def sort_object(obj):
-            if isinstance(obj, dict):
-                return {k: sort_object(obj[k]) for k in sorted(obj.keys())}
-            elif isinstance(obj, list):
-                return [sort_object(item) for item in obj]
-            else:
-                return obj
+            response = requests.post(url, json=request_params, headers=headers)
         
-        sorted_params = sort_object(filtered_params)
-        salt = "W_ak^moHpMla"
-        json_string = json.dumps(sorted_params, separators=(',', ':'))
-        string_to_hash = f"{json_string}{salt}{timestamp}"
-        return hashlib.md5(string_to_hash.encode('utf-8')).hexdigest()
+        return response.json()
+    except Exception as e:
+        print(f"Error making request to {endpoint}: {str(e)}")
+        return {"error": str(e)}
 
-    def make_api_request_with_retry(self, endpoint, params, method="get", retries=3):
-        """Make an API request with retry logic"""
-        for attempt in range(retries):
-            try:
-                return self.make_api_request(endpoint, params, method)
-            except HTTPError as e:
-                logger.error(f"Attempt {attempt + 1}: HTTP Error for {endpoint}: {str(e)}")
-                if attempt < retries - 1:
-                    time.sleep(5)  # wait for 5 seconds before retrying
-                else:
-                    logger.error(f"Max retries reached for {endpoint}")
-            except Exception as e:
-                logger.error(f"Request Error for {endpoint}: {str(e)}")
-                break
-        return {"error": "Failed after retries", "data": None}
+def get_product_details(spu_id, country="AU", language="en"):
+    """Get detailed information about a specific product"""
+    endpoint = "/shop/v1/shop/productDetails"
+    params = {"spuId": str(spu_id)}
+    
+    return make_api_request(endpoint, params, country=country, language=language)
 
-    def make_api_request(self, endpoint, params, method="get", country="GLOBAL", language="en"):
-        """Make an API request to PopMart API"""
-        base_url = "https://prod-global-api.popmart.com"
-        url = f"{base_url}{endpoint}"
-        timestamp = str(int(time.time()))
-        signature = self.generate_signature(params, timestamp, method)
+def get_product_stock_info(product_url, country="AU", language="en"):
+    """Extract product ID from URL and get stock information for a specific product"""
+    try:
+        # Extract product ID from URL (e.g., 'https://www.popmart.com/au/products/938')
+        product_id = product_url.strip().split('/')[-1]
         
-        request_params = params.copy()
-        request_params["s"] = signature
-        request_params["t"] = timestamp
+        details = get_product_details(product_id, country, language)
         
-        client_key = "rmdxjisjk7gwykcix"
-        x_sign_base = f"{timestamp},{client_key}"
-        x_sign_hash = hashlib.md5(x_sign_base.encode('utf-8')).hexdigest()
-        x_sign = f"{x_sign_hash},{timestamp}"
-
-        headers = {
-            "accept": "application/json, text/plain, */*",
-            "accept-language": f"en-{country},en-US;q=0.9,en;q=0.8",
-            "clientkey": client_key,
-            "country": country,
-            "language": language,
-            "origin": "https://www.popmart.com",
-            "referer": "https://www.popmart.com/",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-            "x-sign": x_sign,
-            "tz": "Australia/Sydney"
+        if "data" not in details or not details["data"]:
+            return {
+                "product_id": product_id,
+                "title": "Unknown",
+                "status": "Error fetching details",
+                "sku_count": 0,
+                "skus": []
+            }
+        
+        product_data = details["data"]
+        skus = product_data.get("skus", [])
+        
+        sku_info = []
+        for sku in skus:
+            sku_info.append({
+                "sku_id": sku.get("id"),
+                "sku_title": sku.get("title"),
+                "sku_code": sku.get("skuCode"),
+                "price": sku.get("price"),
+                "discount_price": sku.get("discountPrice"),
+                "currency": sku.get("currency"),
+                "stock": sku.get("stock", {}).get("onlineStock", 0),
+                "lock_stock": sku.get("stock", {}).get("onlineLockStock", 0)
+            })
+        
+        return {
+            "product_id": product_id,
+            "title": product_data.get("title", "Unknown"),
+            "brand": product_data.get("brand", {}).get("name"),
+            "publish_status": "Published" if product_data.get("isPublish") else "Not Published",
+            "availability": "Available" if product_data.get("isAvailable") else "Not Available",
+            "sku_count": len(skus),
+            "skus": sku_info
         }
+    except Exception as e:
+        print(f"Error getting stock for product {product_url}: {str(e)}")
+        return {
+            "product_id": product_url.split('/')[-1],
+            "title": "Error",
+            "status": str(e),
+            "sku_count": 0,
+            "skus": []
+        }
+
+if __name__ == "__main__":
+    print("PopMart Stock Checker")
+    product_url = input("Enter PopMart product URL (e.g., https://www.popmart.com/au/products/938): ").strip()
+    result = get_product_stock_info(product_url)
+    
+    print(f"\nProduct: {result['title']} (ID: {result['product_id']})")
+    print(f"Brand: {result.get('brand', 'Unknown')}")
+    print(f"Status: {result.get('publish_status', 'Unknown')} / {result.get('availability', 'Unknown')}")
+    print(f"SKUs: {result['sku_count']}")
+    
+    for sku in result["skus"]:
+        price = f"{float(sku['price'])/100:.2f}" if sku['price'] else "N/A"
+        discount = f"{float(sku['discount_price'])/100:.2f}" if sku['discount_price'] else "N/A"
         
-        try:
-            if method.lower() == "get":
-                response = requests.get(url, params=request_params, headers=headers, timeout=10)
-            else:
-                response = requests.post(url, json=request_params, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request Error: {str(e)}")
-            return {"error": str(e), "data": None}
-
-    def get_product_stock_info(self, product_id_or_url, country="GLOBAL", language="en"):
-        """Get stock information for a specific product"""
-        try:
-            product_id = product_id_or_url if isinstance(product_id_or_url, str) and not '/' in product_id_or_url else self.extract_product_id_from_url(product_id_or_url)
-            if not product_id:
-                return None
-            endpoint = "/shop/v1/shop/productDetails"
-            params = {"spuId": product_id}
-            details = self.make_api_request_with_retry(endpoint, params, country=country, language=language)
-            if "error" in details:
-                logger.error(f"Error getting product details: {details['error']}")
-                return None
-            if "data" not in details or not details["data"]:
-                logger.error(f"No data returned for product {product_id}")
-                return None
-            product_data = details["data"]
-            skus = product_data.get("skus", [])
-            if not skus and "goods" in product_data:
-                skus = product_data.get("goods", [])
-            in_stock = any(sku.get("stock", {}).get("onlineStock", 0) > 0 for sku in skus)
-            return {"product_id": product_id, "title": product_data.get("title", "Unknown"), "in_stock": in_stock}
-        except Exception as e:
-            logger.error(f"Error getting stock for product {product_id_or_url}: {str(e)}")
-            return None
-
-    def check_all_monitored_products(self):
-        """Check stock for all monitored products"""
-        monitored_products = self.db.get_all_active_monitoring()
-        if not monitored_products:
-            logger.info("No products being monitored")
-            return
-        logger.info(f"Checking {len(monitored_products)} monitored products")
-        for product in monitored_products:
-            # Ensure that we unpack only the expected number of columns
-            if len(product) != 3:
-                logger.warning(f"Skipping product due to unexpected data structure: {product}")
-                continue
-            product_id, product_name, global_link = product
-            if not product_id:
-                continue
-            stock_info = self.get_product_stock_info(product_id)
-            if not stock_info:
-                logger.warning(f"[GLOBAL] Could not get stock info for {product_name} (ID: {product_id})")
-                continue
-            is_in_stock = stock_info["in_stock"]
-            should_notify = self.db.should_notify_stock_change(product_id, "GLOBAL", is_in_stock)
-            if is_in_stock:
-                if should_notify:
-                    self.notification_bot.send_stock_notification(product_id, product_name, global_link, is_global=True)
-                    logger.info(f"[GLOBAL] {product_name} is now in stock! Notifications sent.")
-                else:
-                    logger.info(f"[GLOBAL] {product_name} is still in stock. No notifications sent.")
-            else:
-                logger.info(f"[GLOBAL] {product_name} is out of stock.")
-
-    def check_product(self, product_id_or_url):
-        """Check stock for a specific product (for admin testing)"""
-        product_id = product_id_or_url if isinstance(product_id_or_url, str) and not '/' in product_id_or_url else self.extract_product_id_from_url(product_id_or_url)
-        if not product_id:
-            return {"success": False, "message": "Invalid URL format, could not extract product ID"}
-        product = self.db.get_product(product_id)
-        product_name = product[1] if product else f"Product {product_id}"
-        stock_info = self.get_product_stock_info(product_id)
-        if not stock_info:
-            return {"success": False, "message": "Could not check stock status"}
-        is_in_stock = stock_info["in_stock"]
-        product_title = stock_info.get("title", "Unknown Product")
-        return {"success": True, "product_name": product_name, "product_title": product_title, "in_stock": is_in_stock, "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"}
+        print(f"\n  SKU: {sku['sku_title']} (ID: {sku['sku_id']})")
+        print(f"  Code: {sku['sku_code']}")
+        print(f"  Price: {price} {sku['currency']} (Discount: {discount} {sku['currency']})")
+        print(f"  Stock: {sku['stock']} (Locked: {sku['lock_stock']})")
