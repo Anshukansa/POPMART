@@ -6,6 +6,7 @@ import re
 import logging
 from database import Database
 from notification_bot import NotificationBot
+from requests.exceptions import HTTPError
 
 # Set up logging
 logging.basicConfig(
@@ -20,7 +21,7 @@ class GlobalMonitor:
     def __init__(self, notification_bot_token):
         self.db = Database()
         self.notification_bot = NotificationBot(notification_bot_token)
-    
+
     def extract_product_id_from_url(self, url):
         """Extract product ID from URL like https://www.popmart.com/au/products/643/PRODUCT-NAME"""
         # Pattern to extract product ID
@@ -53,6 +54,22 @@ class GlobalMonitor:
         json_string = json.dumps(sorted_params, separators=(',', ':'))
         string_to_hash = f"{json_string}{salt}{timestamp}"
         return hashlib.md5(string_to_hash.encode('utf-8')).hexdigest()
+
+    def make_api_request_with_retry(self, endpoint, params, method="get", retries=3):
+        """Make an API request with retry logic"""
+        for attempt in range(retries):
+            try:
+                return self.make_api_request(endpoint, params, method)
+            except HTTPError as e:
+                logger.error(f"Attempt {attempt + 1}: HTTP Error for {endpoint}: {str(e)}")
+                if attempt < retries - 1:
+                    time.sleep(5)  # wait for 5 seconds before retrying
+                else:
+                    logger.error(f"Max retries reached for {endpoint}")
+            except Exception as e:
+                logger.error(f"Request Error for {endpoint}: {str(e)}")
+                break
+        return {"error": "Failed after retries", "data": None}
 
     def make_api_request(self, endpoint, params, method="get", country="GLOBAL", language="en"):
         """Make an API request to PopMart API"""
@@ -102,7 +119,7 @@ class GlobalMonitor:
                 return None
             endpoint = "/shop/v1/shop/productDetails"
             params = {"spuId": product_id}
-            details = self.make_api_request(endpoint, params, country=country, language=language)
+            details = self.make_api_request_with_retry(endpoint, params, country=country, language=language)
             if "error" in details:
                 logger.error(f"Error getting product details: {details['error']}")
                 return None
@@ -127,6 +144,10 @@ class GlobalMonitor:
             return
         logger.info(f"Checking {len(monitored_products)} monitored products")
         for product in monitored_products:
+            # Ensure that we unpack only the expected number of columns
+            if len(product) != 3:
+                logger.warning(f"Skipping product due to unexpected data structure: {product}")
+                continue
             product_id, product_name, global_link = product
             if not product_id:
                 continue
