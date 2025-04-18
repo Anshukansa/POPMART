@@ -133,15 +133,53 @@ class GlobalMonitor:
             product_name = product[1]
             global_link = product[2]
             
+            if not product_id:
+                continue
+            
             # Check stock status
             stock_info = self.get_product_stock_info(product_id)
             
-            if stock_info and stock_info["in_stock"]:
-                # Send notification
-                self.notification_bot.send_stock_notification(
-                    product_id, product_name, global_link, is_global=True
-                )
+            if not stock_info:
+                print(f"[GLOBAL] Could not get stock info for {product_name}")
+                continue
                 
-                print(f"[GLOBAL] {product_name} is in stock! Notifications sent.")
+            is_in_stock = stock_info["in_stock"]
+            
+            # Check if we should send notifications (only if stock status changed to in-stock)
+            should_notify = self.db.should_notify_stock_change(product_id, "GLOBAL", is_in_stock)
+            
+            if is_in_stock:
+                if should_notify:
+                    # Send notification only if stock status changed
+                    self.notification_bot.send_stock_notification(
+                        product_id, product_name, global_link, is_global=True
+                    )
+                    print(f"[GLOBAL] {product_name} is now in stock! Notifications sent.")
+                else:
+                    print(f"[GLOBAL] {product_name} is still in stock. No notifications sent.")
             else:
                 print(f"[GLOBAL] {product_name} is out of stock.")
+                
+    def check_product(self, product_id):
+        """Check stock for a specific product (for admin testing)"""
+        product = self.db.get_product(product_id)
+        
+        if not product:
+            return {"success": False, "message": "Product not found"}
+        
+        product_name = product[1]
+        
+        # Check stock status
+        stock_info = self.get_product_stock_info(product_id)
+        
+        if not stock_info:
+            return {"success": False, "message": "Could not check stock status"}
+        
+        is_in_stock = stock_info["in_stock"]
+        
+        return {
+            "success": True, 
+            "product_name": product_name,
+            "in_stock": is_in_stock,
+            "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"
+        }

@@ -30,15 +30,19 @@ class AUMonitor:
                 product_title = product_data.get('title', 'Unknown Product')
                 
                 in_stock = False
+                stock_details = []
+                
                 for variant in product_data.get('variants', []):
                     stock = self.get_stock_level(variant)
+                    variant_title = variant.get('title', 'Default Variant')
+                    stock_details.append(f"{variant_title}: {stock}")
                     if stock != 'Out of stock':
                         in_stock = True
-                        break
                 
                 return {
                     "title": product_title,
-                    "in_stock": in_stock
+                    "in_stock": in_stock,
+                    "stock_details": stock_details
                 }
             else:
                 print(f"Error finding product: {response.reason}")
@@ -63,12 +67,44 @@ class AUMonitor:
             # Check stock status
             stock_info = self.check_stock(au_link)
             
-            if stock_info and stock_info["in_stock"]:
-                # Send notification
-                self.notification_bot.send_stock_notification(
-                    product_id, product_name, au_link, is_global=False
-                )
+            if not stock_info:
+                print(f"[AU] Could not get stock info for {product_name}")
+                continue
                 
-                print(f"[AU] {product_name} is in stock! Notifications sent.")
+            is_in_stock = stock_info["in_stock"]
+            
+            # Check if we should send notifications (only if stock status changed to in-stock)
+            should_notify = self.db.should_notify_stock_change(product_id, "AU", is_in_stock)
+            
+            if is_in_stock:
+                if should_notify:
+                    # Send notification only if stock status changed
+                    self.notification_bot.send_stock_notification(
+                        product_id, product_name, au_link, is_global=False
+                    )
+                    print(f"[AU] {product_name} is now in stock! Notifications sent.")
+                else:
+                    print(f"[AU] {product_name} is still in stock. No notifications sent.")
             else:
                 print(f"[AU] {product_name} is out of stock.")
+    
+    def check_product(self, au_link):
+        """Check stock for a specific product URL (for admin testing)"""
+        if not au_link:
+            return {"success": False, "message": "No AU link provided"}
+        
+        # Check stock status
+        stock_info = self.check_stock(au_link)
+        
+        if not stock_info:
+            return {"success": False, "message": "Could not check stock status"}
+        
+        is_in_stock = stock_info["in_stock"]
+        stock_details = "\n".join(stock_info["stock_details"])
+        
+        return {
+            "success": True,
+            "product_name": stock_info["title"],
+            "in_stock": is_in_stock,
+            "message": f"AU store: {'In Stock' if is_in_stock else 'Out of Stock'}\n\nDetails:\n{stock_details}"
+        }

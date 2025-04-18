@@ -53,6 +53,10 @@ def setup_database():
             cursor.execute("SELECT to_regclass('public.user_monitoring')")
             monitoring_exists = cursor.fetchone()[0] is not None
             
+            # Check if product_stock_status table exists
+            cursor.execute("SELECT to_regclass('public.product_stock_status')")
+            stock_status_exists = cursor.fetchone()[0] is not None
+            
             # Only create tables if they don't exist
             if not users_exists:
                 print("Creating users table...")
@@ -91,6 +95,20 @@ def setup_database():
                     FOREIGN KEY (product_id) REFERENCES products (product_id)
                 )
                 ''')
+                
+            if not stock_status_exists:
+                print("Creating product_stock_status table...")
+                cursor.execute('''
+                CREATE TABLE product_stock_status (
+                    product_id TEXT,
+                    store_type TEXT,
+                    previous_status BOOLEAN DEFAULT FALSE,
+                    current_status BOOLEAN DEFAULT FALSE,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (product_id, store_type),
+                    FOREIGN KEY (product_id) REFERENCES products (product_id)
+                )
+                ''')
         else:
             # SQLite schema
             cursor.execute('''
@@ -121,6 +139,18 @@ def setup_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expiry_date TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (user_id),
+                FOREIGN KEY (product_id) REFERENCES products (product_id)
+            )
+            ''')
+            
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_stock_status (
+                product_id TEXT,
+                store_type TEXT,
+                previous_status BOOLEAN DEFAULT 0,
+                current_status BOOLEAN DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (product_id, store_type),
                 FOREIGN KEY (product_id) REFERENCES products (product_id)
             )
             ''')

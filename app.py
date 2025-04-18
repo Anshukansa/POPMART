@@ -24,7 +24,7 @@ def run_settings_bot():
 
 def run_admin_panel():
     """Run the admin panel"""
-    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD)
+    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
     panel.run()
 
 def run_monitors():
@@ -33,18 +33,18 @@ def run_monitors():
         global_monitor = GlobalMonitor(NOTIFICATION_BOT_TOKEN)
         au_monitor = AUMonitor(NOTIFICATION_BOT_TOKEN)
         
-        # Schedule monitoring runs
-        schedule.every(30).minutes.do(global_monitor.check_all_monitored_products)
-        schedule.every(30).minutes.do(au_monitor.check_all_monitored_products)
+        # Schedule monitoring runs every 10 seconds
+        schedule.every(10).seconds.do(global_monitor.check_all_monitored_products)
+        schedule.every(10).seconds.do(au_monitor.check_all_monitored_products)
         
         while True:
             schedule.run_pending()
-            time.sleep(60)
+            time.sleep(1)  # Sleep for 1 second between schedule checks
     else:
         print("Notification bot token not found!")
 
 # Create the admin panel and expose its Flask app for Gunicorn
-panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD)
+panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
 app = panel.app  # Expose the Flask app for Gunicorn
 
 if __name__ == "__main__":

@@ -80,6 +80,17 @@ class Database:
         
         return self._execute_query(query, params)
     
+    def set_balance(self, user_id, amount):
+        """Set a user's balance to a specific amount"""
+        if DATABASE_URL.startswith("sqlite"):
+            query = "UPDATE users SET balance = ? WHERE user_id = ?"
+            params = (amount, user_id)
+        else:
+            query = "UPDATE users SET balance = %s WHERE user_id = %s"
+            params = (amount, user_id)
+        
+        return self._execute_query(query, params)
+    
     # Product methods
     def add_product(self, product_id, product_name, global_link, au_link, price):
         """Add or update a product"""
@@ -246,6 +257,89 @@ class Database:
         """Get all registered users"""
         query = "SELECT * FROM users"
         return self._execute_query(query, fetch='all')
+    
+    # Stock status tracking methods
+    def update_product_stock_status(self, product_id, store_type, is_in_stock):
+        """Update the stock status of a product"""
+        current_time = datetime.now()
+        
+        if DATABASE_URL.startswith("sqlite"):
+            # First check if record exists
+            check_query = """
+                SELECT * FROM product_stock_status 
+                WHERE product_id = ? AND store_type = ?
+            """
+            check_params = (product_id, store_type)
+            
+            existing = self._execute_query(check_query, check_params, fetch='one')
+            
+            if existing:
+                # Update existing record
+                query = """
+                    UPDATE product_stock_status 
+                    SET previous_status = current_status,
+                        current_status = ?,
+                        last_updated = ?
+                    WHERE product_id = ? AND store_type = ?
+                """
+                params = (is_in_stock, current_time, product_id, store_type)
+            else:
+                # Insert new record
+                query = """
+                    INSERT INTO product_stock_status 
+                    (product_id, store_type, previous_status, current_status, last_updated) 
+                    VALUES (?, ?, ?, ?, ?)
+                """
+                params = (product_id, store_type, False, is_in_stock, current_time)
+        else:
+            # PostgreSQL upsert
+            query = """
+                INSERT INTO product_stock_status 
+                (product_id, store_type, previous_status, current_status, last_updated) 
+                VALUES (%s, %s, 
+                    COALESCE((SELECT current_status FROM product_stock_status WHERE product_id = %s AND store_type = %s), FALSE),
+                    %s, %s)
+                ON CONFLICT (product_id, store_type) DO UPDATE 
+                SET previous_status = product_stock_status.current_status,
+                    current_status = EXCLUDED.current_status,
+                    last_updated = EXCLUDED.last_updated
+            """
+            params = (product_id, store_type, product_id, store_type, is_in_stock, current_time)
+        
+        return self._execute_query(query, params)
+    
+    def get_product_stock_status(self, product_id, store_type):
+        """Get the current stock status of a product"""
+        if DATABASE_URL.startswith("sqlite"):
+            query = """
+                SELECT previous_status, current_status, last_updated 
+                FROM product_stock_status 
+                WHERE product_id = ? AND store_type = ?
+            """
+            params = (product_id, store_type)
+        else:
+            query = """
+                SELECT previous_status, current_status, last_updated 
+                FROM product_stock_status 
+                WHERE product_id = %s AND store_type = %s
+            """
+            params = (product_id, store_type)
+        
+        return self._execute_query(query, params, fetch='one')
+    
+    def should_notify_stock_change(self, product_id, store_type, is_in_stock):
+        """Check if we should notify about a stock change"""
+        status = self.get_product_stock_status(product_id, store_type)
+        
+        # Update the stock status
+        self.update_product_stock_status(product_id, store_type, is_in_stock)
+        
+        if not status:
+            # First time checking this product - notify only if in stock
+            return is_in_stock
+        
+        # Notify if status changed from out of stock to in stock
+        return not status[1] and is_in_stock
     
     def close(self):
         """Close the database connection"""

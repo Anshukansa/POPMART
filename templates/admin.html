@@ -51,7 +51,7 @@
                             <th>Username</th>
                             <th>Balance</th>
                             <th>Created At</th>
-                            <th>Action</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -66,6 +66,11 @@
                                         <input type="hidden" name="user_id" value="{{ user[0] }}">
                                         <input type="number" name="amount" step="0.01" min="0.01" placeholder="Amount" required>
                                         <button type="submit">Add Balance</button>
+                                    </form>
+                                    <form method="post" action="{{ url_for('set_balance') }}" class="inline-form" style="margin-left: 10px;">
+                                        <input type="hidden" name="user_id" value="{{ user[0] }}">
+                                        <input type="number" name="balance" step="0.01" min="0" placeholder="New Balance" required>
+                                        <button type="submit">Set Balance</button>
                                     </form>
                                 </td>
                             </tr>
@@ -84,6 +89,7 @@
                             <th>Global Link</th>
                             <th>AU Link</th>
                             <th>Price</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -102,6 +108,18 @@
                                     {% endif %}
                                 </td>
                                 <td>${{ "%.2f"|format(product[4]) }}</td>
+                                <td>
+                                    <div style="display: flex;">
+                                        <form method="post" action="{{ url_for('test_global_stock') }}" style="margin-right: 5px;">
+                                            <input type="hidden" name="product_id" value="{{ product[0] }}">
+                                            <button type="submit">Test Global</button>
+                                        </form>
+                                        <form method="post" action="{{ url_for('test_au_stock') }}">
+                                            <input type="hidden" name="product_id" value="{{ product[0] }}">
+                                            <button type="submit">Test AU</button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>

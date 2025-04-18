@@ -5,10 +5,11 @@ from admin_panel import AdminPanel
 # Load environment variables
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
+NOTIFICATION_BOT_TOKEN = os.environ.get("NOTIFICATION_BOT_TOKEN")
 
 try:
-    # Create the admin panel
-    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD)
+    # Create the admin panel with notification token for testing functionality
+    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
     
     # Expose the Flask app for Gunicorn
     app = panel.app
