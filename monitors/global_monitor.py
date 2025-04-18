@@ -2,6 +2,7 @@ import hashlib
 import json
 import time
 import requests
+import re
 from database import Database
 from notification_bot import NotificationBot
 
@@ -95,12 +96,32 @@ class GlobalMonitor:
             print(f"Error making request to {endpoint}: {str(e)}")
             return {"error": str(e)}
 
+    def extract_product_code(self, product_id):
+        """Extract product code from ID or URL if needed"""
+        # If it looks like a URL, try to extract the code
+        if product_id and ('http' in product_id or '/' in product_id):
+            # Try to extract ID from URLs like https://www.popmart.com/goods/detail?id=PROD12345
+            match = re.search(r'id=([A-Za-z0-9]+)', product_id)
+            if match:
+                return match.group(1)
+                
+            # Try to extract ID from a path like /goods/PROD12345
+            match = re.search(r'/([A-Za-z0-9]+)(?:/|\?|$)', product_id)
+            if match:
+                return match.group(1)
+                
+        return product_id  # Return as is if not a URL or couldn't extract
+
     def get_product_stock_info(self, product_id):
         """Get stock information for a specific product"""
         try:
-            endpoint = "/shop/v1/shop/productDetails"
-            params = {"spuId": str(product_id)}
+            # Extract just the product code if it's a URL
+            product_code = self.extract_product_code(product_id)
             
+            endpoint = "/shop/v1/shop/productDetails"
+            params = {"spuId": str(product_code)}
+            
+            print(f"Checking global stock for product code: {product_code}")
             details = self.make_api_request(endpoint, params)
             
             if "data" not in details or not details["data"]:
