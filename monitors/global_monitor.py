@@ -3,13 +3,47 @@ import json
 import time
 import requests
 import re
+import logging
 from database import Database
 from notification_bot import NotificationBot
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("popmart_global_monitor.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class GlobalMonitor:
     def __init__(self, notification_bot_token):
         self.db = Database()
         self.notification_bot = NotificationBot(notification_bot_token)
+    
+    def extract_product_id_from_url(self, url):
+        """Extract product ID from a URL like https://www.popmart.com/au/products/643/PRODUCT-NAME"""
+        # Pattern to extract product ID from URLs like:
+        # https://www.popmart.com/au/products/643/THE-MONSTERS---I-FOUND-YOU-Vinyl-Face-Doll
+        pattern = r'/products/(\d+)/'
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+            
+        # If no match found, check if the URL might just be the ID
+        if url.isdigit():
+            return url
+            
+        # Try another pattern for direct product links
+        pattern2 = r'product_id=(\d+)'
+        match = re.search(pattern2, url)
+        if match:
+            return match.group(1)
+            
+        logger.error(f"Could not extract product ID from URL: {url}")
+        return None
         
     def generate_signature(self, params, timestamp, method="get"):
         """Generate the signature ('s' parameter) for PopMart API"""
@@ -87,90 +121,100 @@ class GlobalMonitor:
         
         try:
             if method.lower() == "get":
-                response = requests.get(url, params=request_params, headers=headers)
+                response = requests.get(url, params=request_params, headers=headers, timeout=10)
             else:
-                response = requests.post(url, json=request_params, headers=headers)
+                response = requests.post(url, json=request_params, headers=headers, timeout=10)
             
-            return response.json()
+            # Check if the response was successful
+            response.raise_for_status()
+            
+            # Try to parse as JSON
+            response_data = response.json()
+            
+            # Check if the API returned an error
+            if isinstance(response_data, dict) and response_data.get("code") != 0 and response_data.get("code") != "OK":
+                error_msg = response_data.get("msg", "Unknown API error")
+                logger.error(f"API error: {error_msg} (Code: {response_data.get('code')})")
+                return {"error": error_msg, "code": response_data.get("code"), "data": None}
+            
+            return response_data
+            
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP Error for {endpoint}: {str(e)}")
+            return {"error": f"HTTP Error: {str(e)}", "data": None}
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Connection Error for {endpoint}: {str(e)}")
+            return {"error": f"Connection Error: {str(e)}", "data": None}
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Timeout Error for {endpoint}: {str(e)}")
+            return {"error": f"Timeout Error: {str(e)}", "data": None}
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request Error for {endpoint}: {str(e)}")
+            return {"error": f"Request Error: {str(e)}", "data": None}
+        except ValueError as e:
+            logger.error(f"JSON Decode Error for {endpoint}: {str(e)}")
+            return {"error": f"JSON Decode Error: {str(e)}", "data": None}
         except Exception as e:
-            print(f"Error making request to {endpoint}: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"Unexpected error for {endpoint}: {str(e)}")
+            return {"error": f"Unexpected Error: {str(e)}", "data": None}
 
-    def extract_product_code(self, product_id):
-        """Extract product code from ID or URL if needed"""
-        # If it's already a simple ID (not a URL), return it as is
-        if product_id and not ('http' in product_id or '/' in product_id):
-            return product_id
-            
-        # Try to extract ID from URLs like https://www.popmart.com/goods/detail?id=PROD12345
-        match = re.search(r'id=([A-Za-z0-9]+)', product_id)
-        if match:
-            return match.group(1)
-        
-        # Try to extract ID from URLs like https://www.popmart.com/au/products/643/PRODUCT-NAME
-        match = re.search(r'/products/([^/]+)', product_id)
-        if match:
-            return match.group(1)
-            
-        # Try to extract ID from a path like /goods/PROD12345
-        match = re.search(r'/goods/([A-Za-z0-9]+)', product_id)
-        if match:
-            return match.group(1)
-            
-        # Try to extract ID from URLs with numeric IDs like example.com/123-product-name
-        match = re.search(r'/([0-9]+)(?:-|/|$)', product_id)
-        if match:
-            return match.group(1)
-            
-        # If we can't extract a code, return the original value
-        print(f"Could not extract product code from: {product_id}")
-        return product_id
-
-    def get_product_stock_info(self, product_id):
+    def get_product_stock_info(self, product_id_or_url, country="GLOBAL", language="en"):
         """Get stock information for a specific product"""
         try:
-            # Extract just the product code if it's a URL
-            product_code = self.extract_product_code(product_id)
+            # Check if we have a URL or just an ID
+            if isinstance(product_id_or_url, str) and '/' in product_id_or_url:
+                product_id = self.extract_product_id_from_url(product_id_or_url)
+                if not product_id:
+                    return None
+            else:
+                product_id = str(product_id_or_url)
             
             endpoint = "/shop/v1/shop/productDetails"
-            params = {"spuId": str(product_code)}
+            params = {"spuId": product_id}
             
-            print(f"Checking global stock for product code: {product_code}")
-            details = self.make_api_request(endpoint, params)
+            details = self.make_api_request(endpoint, params, country=country, language=language)
+            
+            if "error" in details:
+                logger.error(f"Error getting product details for {product_id}: {details['error']}")
+                return None
             
             if "data" not in details or not details["data"]:
-                print(f"No data returned from API for product code: {product_code}")
-                if "message" in details:
-                    print(f"API error message: {details['message']}")
+                logger.error(f"No data returned for product {product_id}")
                 return None
             
             product_data = details["data"]
             skus = product_data.get("skus", [])
             
-            in_stock = False
-            stock_details = []
+            # Check if we need to look for skus in 'goods' instead
+            if not skus and "goods" in product_data:
+                skus = product_data.get("goods", [])
             
+            in_stock = False
             for sku in skus:
-                variant_title = sku.get("name", "Default Variant")
-                stock_level = sku.get("stock", {}).get("onlineStock", 0)
-                stock_details.append(f"{variant_title}: {stock_level}")
-                
-                if stock_level > 0:
+                # Check the stock using the nested structure from the API
+                stock = sku.get("stock", {}).get("onlineStock", 0)
+                if stock > 0:
                     in_stock = True
+                    break
             
             return {
                 "product_id": product_id,
                 "title": product_data.get("title", "Unknown"),
-                "in_stock": in_stock,
-                "stock_details": stock_details
+                "in_stock": in_stock
             }
         except Exception as e:
-            print(f"Error getting stock for product {product_id}: {str(e)}")
+            logger.error(f"Error getting stock for product {product_id_or_url}: {str(e)}")
             return None
 
     def check_all_monitored_products(self):
         """Check stock for all monitored products"""
         monitored_products = self.db.get_all_active_monitoring()
+        
+        if not monitored_products:
+            logger.info("No products being monitored")
+            return
+            
+        logger.info(f"Checking {len(monitored_products)} monitored products")
         
         for product in monitored_products:
             product_id = product[0]
@@ -180,11 +224,11 @@ class GlobalMonitor:
             if not product_id:
                 continue
             
-            # Check stock status
+            # Check stock status - try extracting ID from URL if it's a URL
             stock_info = self.get_product_stock_info(product_id)
             
             if not stock_info:
-                print(f"[GLOBAL] Could not get stock info for {product_name}")
+                logger.warning(f"[GLOBAL] Could not get stock info for {product_name} (ID: {product_id})")
                 continue
                 
             is_in_stock = stock_info["in_stock"]
@@ -198,20 +242,30 @@ class GlobalMonitor:
                     self.notification_bot.send_stock_notification(
                         product_id, product_name, global_link, is_global=True
                     )
-                    print(f"[GLOBAL] {product_name} is now in stock! Notifications sent.")
+                    logger.info(f"[GLOBAL] {product_name} is now in stock! Notifications sent.")
                 else:
-                    print(f"[GLOBAL] {product_name} is still in stock. No notifications sent.")
+                    logger.info(f"[GLOBAL] {product_name} is still in stock. No notifications sent.")
             else:
-                print(f"[GLOBAL] {product_name} is out of stock.")
+                logger.info(f"[GLOBAL] {product_name} is out of stock.")
                 
-    def check_product(self, product_id):
+    def check_product(self, product_id_or_url):
         """Check stock for a specific product (for admin testing)"""
+        # Check if it's a URL and extract product ID if needed
+        if isinstance(product_id_or_url, str) and '/' in product_id_or_url:
+            product_id = self.extract_product_id_from_url(product_id_or_url)
+            if not product_id:
+                return {"success": False, "message": "Invalid URL format, could not extract product ID"}
+        else:
+            product_id = product_id_or_url
+
+        # First try to get product from database
         product = self.db.get_product(product_id)
         
-        if not product:
-            return {"success": False, "message": "Product not found"}
-        
-        product_name = product[1]
+        # If in database, use the name from there
+        if product:
+            product_name = product[1]
+        else:
+            product_name = f"Product {product_id}"
         
         # Check stock status
         stock_info = self.get_product_stock_info(product_id)
@@ -220,11 +274,12 @@ class GlobalMonitor:
             return {"success": False, "message": "Could not check stock status"}
         
         is_in_stock = stock_info["in_stock"]
-        stock_details = "\n".join(stock_info.get("stock_details", ["No variant details available"]))
+        product_title = stock_info.get("title", "Unknown Product")
         
         return {
             "success": True, 
             "product_name": product_name,
+            "product_title": product_title,
             "in_stock": is_in_stock,
-            "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}\n\nDetails:\n{stock_details}"
+            "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"
         }

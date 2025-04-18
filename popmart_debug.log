@@ -1,0 +1,114 @@
+2025-04-18 13:36:06,972 - INFO - Testing API connection...
+2025-04-18 13:36:06,973 - INFO - Making GET request to: https://prod-global-api.popmart.com/shop/v1/shop/indexCarousel
+2025-04-18 13:36:06,973 - INFO - Headers: {
+  "accept": "application/json, text/plain, */*",
+  "accept-language": "en-AU,en-US;q=0.9,en;q=0.8",
+  "clientkey": "rmdxjisjk7gwykcix",
+  "country": "AU",
+  "language": "en",
+  "origin": "https://www.popmart.com",
+  "referer": "https://www.popmart.com/",
+  "did": "g1Oeu7q3-59v6-m85u-945t-9vV3kUgBp03I",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+  "x-client-country": "AU",
+  "x-client-namespace": "eurasian",
+  "x-device-os-type": "web",
+  "x-project-id": "eude",
+  "x-sign": "e323ebbc1f3b6966a299c5ccd1a1eab5,1744947366",
+  "tz": "Australia/Sydney"
+}
+2025-04-18 13:36:06,973 - INFO - Params: {
+  "s": "40525bb58b78e964bc684dcd79764a67",
+  "t": "1744947366"
+}
+2025-04-18 13:36:08,008 - INFO - Response status: 404
+2025-04-18 13:36:08,008 - INFO - Response headers: {'Date': 'Fri, 18 Apr 2025 03:36:07 GMT', 'Content-Type': 'text/plain', 'Content-Length': '18', 'Connection': 'keep-alive', 'Server': 'PWS/8.3.1.0.8', 'kratos-trace-id': '6467d056596801c8:6467d056596801c8:0:1', 'access-control-allow-origin': 'https://www.popmart.com', 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'PUT, GET, POST, DELETE, PATCH, OPTIONS', 'access-control-allow-headers': 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Project-ID,X-Sign,X-GID,X-APPID,ClientKey,x-device-os-type,Country,X-Client-Country,X-Client-Namespace,X-Client-Project-ID,TD-Session-Key,Lang,Language,x-pp-env,x-device-channel,TD-Session-Key,did,x-www-csapp,Td-Session-Path,Td-Session-Query,Td-Session-Body,Td-Session-Sign,tz', 'Alt-Svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000', 'Via': '1.1 google, 1.1 PSmgdfDEN1vd94:2 (W), 1.1 n37:5 (W)', 'X-Px': 'ms n37SYD,ms PSmgdfDEN1vd94DEN(origin)', 'x-ws-request-id': '6801c8a6_xini32_30577-29472', 'Access-Control-Max-Age': '*', 'Access-Control-Expose-Headers': '*', 'Expires': '*', 'Cache-Control': '*'}
+2025-04-18 13:36:08,009 - INFO - Response content: 404 page not found...
+2025-04-18 13:36:08,009 - ERROR - HTTP Error for /shop/v1/shop/indexCarousel: 404 Client Error: Not Found for url: https://prod-global-api.popmart.com/shop/v1/shop/indexCarousel?s=40525bb58b78e964bc684dcd79764a67&t=1744947366
+2025-04-18 13:36:08,009 - ERROR - Error extracting category IDs: 'NoneType' object has no attribute 'get'
+2025-04-18 13:36:08,009 - ERROR - Failed to retrieve categories
+2025-04-18 13:36:08,010 - INFO - Making GET request to: https://prod-global-api.popmart.com/shop/v1/shop/productList
+2025-04-18 13:36:08,010 - INFO - Headers: {
+  "accept": "application/json, text/plain, */*",
+  "accept-language": "en-AU,en-US;q=0.9,en;q=0.8",
+  "clientkey": "rmdxjisjk7gwykcix",
+  "country": "AU",
+  "language": "en",
+  "origin": "https://www.popmart.com",
+  "referer": "https://www.popmart.com/",
+  "did": "g1Oeu7q3-59v6-m85u-945t-9vV3kUgBp03I",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+  "x-client-country": "AU",
+  "x-client-namespace": "eurasian",
+  "x-device-os-type": "web",
+  "x-project-id": "eude",
+  "x-sign": "87c02dd263c4e12aaeb82b61f52208a4,1744947368",
+  "tz": "Australia/Sydney"
+}
+2025-04-18 13:36:08,010 - INFO - Params: {
+  "page": "1",
+  "size": "1",
+  "s": "50b1de8a1f3de5b962751aa0d3c9bd5c",
+  "t": "1744947368"
+}
+2025-04-18 13:36:08,580 - INFO - Response status: 404
+2025-04-18 13:36:08,581 - INFO - Response headers: {'Date': 'Fri, 18 Apr 2025 03:36:08 GMT', 'Content-Type': 'text/plain', 'Content-Length': '18', 'Connection': 'keep-alive', 'Server': 'PWS/8.3.1.0.8', 'kratos-trace-id': '192ed02b096801c8:192ed02b096801c8:0:1', 'access-control-allow-origin': 'https://www.popmart.com', 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'PUT, GET, POST, DELETE, PATCH, OPTIONS', 'access-control-allow-headers': 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Project-ID,X-Sign,X-GID,X-APPID,ClientKey,x-device-os-type,Country,X-Client-Country,X-Client-Namespace,X-Client-Project-ID,TD-Session-Key,Lang,Language,x-pp-env,x-device-channel,TD-Session-Key,did,x-www-csapp,Td-Session-Path,Td-Session-Query,Td-Session-Body,Td-Session-Sign,tz', 'Alt-Svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000', 'Via': '1.1 google, 1.1 PS-SIN-04nGp130:1 (W), 1.1 n37:1 (W)', 'X-Px': 'ms n37SYD,ms PS-SIN-04nGp130SIN(origin)', 'x-ws-request-id': '6801c8a7_xini32_32379-20995', 'Access-Control-Max-Age': '*', 'Access-Control-Expose-Headers': '*', 'Expires': '*', 'Cache-Control': '*'}
+2025-04-18 13:36:08,581 - INFO - Response content: 404 page not found...
+2025-04-18 13:36:08,581 - ERROR - HTTP Error for /shop/v1/shop/productList: 404 Client Error: Not Found for url: https://prod-global-api.popmart.com/shop/v1/shop/productList?page=1&size=1&s=50b1de8a1f3de5b962751aa0d3c9bd5c&t=1744947368
+2025-04-18 13:36:08,581 - ERROR - Product list test failed: HTTP Error: 404 Client Error: Not Found for url: https://prod-global-api.popmart.com/shop/v1/shop/productList?page=1&size=1&s=50b1de8a1f3de5b962751aa0d3c9bd5c&t=1744947368
+2025-04-18 13:36:14,109 - INFO - Getting stock information for product ID 938 in AU...
+2025-04-18 13:36:14,109 - INFO - Making GET request to: https://prod-global-api.popmart.com/shop/v1/shop/productDetails
+2025-04-18 13:36:14,111 - INFO - Headers: {
+  "accept": "application/json, text/plain, */*",
+  "accept-language": "en-AU,en-US;q=0.9,en;q=0.8",
+  "clientkey": "rmdxjisjk7gwykcix",
+  "country": "AU",
+  "language": "en",
+  "origin": "https://www.popmart.com",
+  "referer": "https://www.popmart.com/",
+  "did": "g1Oeu7q3-59v6-m85u-945t-9vV3kUgBp03I",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+  "x-client-country": "AU",
+  "x-client-namespace": "eurasian",
+  "x-device-os-type": "web",
+  "x-project-id": "eude",
+  "x-sign": "10923079099302bcea8f6c3820bfd1be,1744947374",
+  "tz": "Australia/Sydney"
+}
+2025-04-18 13:36:14,111 - INFO - Params: {
+  "spuId": "938",
+  "s": "d82c18cc65d30dd779e66245a896a3a6",
+  "t": "1744947374"
+}
+2025-04-18 13:36:14,768 - INFO - Response status: 200
+2025-04-18 13:36:14,769 - INFO - Response headers: {'Date': 'Fri, 18 Apr 2025 03:36:14 GMT', 'Content-Type': 'application/json; charset=utf-8', 'Transfer-Encoding': 'chunked', 'Connection': 'keep-alive', 'Server': 'PWS/8.3.1.0.8', 'kratos-status-code': '1', 'kratos-trace-id': '604812bfe86801c8:604812bfe86801c8:0:1', 'access-control-allow-origin': 'https://www.popmart.com', 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'PUT, GET, POST, DELETE, PATCH, OPTIONS', 'access-control-allow-headers': 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Project-ID,X-Sign,X-GID,X-APPID,ClientKey,x-device-os-type,Country,X-Client-Country,X-Client-Namespace,X-Client-Project-ID,TD-Session-Key,Lang,Language,x-pp-env,x-device-channel,TD-Session-Key,did,x-www-csapp,Td-Session-Path,Td-Session-Query,Td-Session-Body,Td-Session-Sign,tz', 'Alt-Svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000', 'Via': '1.1 google, 1.1 PS-SIN-04nGp130:1 (W), 1.1 n37:3 (W)', 'X-Px': 'ms n37SYD,ms PS-SIN-04nGp130SIN(origin)', 'x-ws-request-id': '6801c8ae_xini32_30577-29524', 'Access-Control-Max-Age': '*', 'Access-Control-Expose-Headers': '*', 'Expires': '*', 'Cache-Control': '*'}
+2025-04-18 13:36:14,769 - INFO - Response content: {"code":"OK","data":{"id":"938","title":"THE MONSTERS - Tasty Macarons Vinyl Face Blind Box","subTitle":"POP MART","brandId":18,"type":"normal","isHot":true,"show":true,"descImages":["https://prod-eurasian-res.popmart.com/default/20241029_173901_101748____1200_01_____1200x672.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_074011____1200_02_____1200x1101.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_195763____1200_03_____1200x1438.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_581207____1200_04_____1200x414.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_826037____1200_05_____1200x1015.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_290163____1200_06_____1200x781.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173902_993526____1200_07_____1200x1077.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_548359____1200_08_____1200x960.jpg","https://prod-eurasia...
+2025-04-18 13:36:14,770 - ERROR - API error: Unknown API error (Code: OK)
+2025-04-18 13:37:09,103 - INFO - Getting stock information for product ID 938 in AU...
+2025-04-18 13:37:09,104 - INFO - Making GET request to: https://prod-global-api.popmart.com/shop/v1/shop/productDetails
+2025-04-18 13:37:09,104 - INFO - Headers: {
+  "accept": "application/json, text/plain, */*",
+  "accept-language": "en-AU,en-US;q=0.9,en;q=0.8",
+  "clientkey": "rmdxjisjk7gwykcix",
+  "country": "AU",
+  "language": "en",
+  "origin": "https://www.popmart.com",
+  "referer": "https://www.popmart.com/",
+  "did": "g1Oeu7q3-59v6-m85u-945t-9vV3kUgBp03I",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+  "x-client-country": "AU",
+  "x-client-namespace": "eurasian",
+  "x-device-os-type": "web",
+  "x-project-id": "eude",
+  "x-sign": "47fb318f502f3e5b004d082802258508,1744947429",
+  "tz": "Australia/Sydney"
+}
+2025-04-18 13:37:09,105 - INFO - Params: {
+  "spuId": "938",
+  "s": "2c025e8ba60bb207abe1aea95099a9aa",
+  "t": "1744947429"
+}
+2025-04-18 13:37:09,835 - INFO - Response status: 200
+2025-04-18 13:37:09,835 - INFO - Response headers: {'Date': 'Fri, 18 Apr 2025 03:37:09 GMT', 'Content-Type': 'application/json; charset=utf-8', 'Transfer-Encoding': 'chunked', 'Connection': 'keep-alive', 'Server': 'PWS/8.3.1.0.8', 'kratos-status-code': '1', 'kratos-trace-id': '5353c792306801c8:5353c792306801c8:0:1', 'access-control-allow-origin': 'https://www.popmart.com', 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'PUT, GET, POST, DELETE, PATCH, OPTIONS', 'access-control-allow-headers': 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Project-ID,X-Sign,X-GID,X-APPID,ClientKey,x-device-os-type,Country,X-Client-Country,X-Client-Namespace,X-Client-Project-ID,TD-Session-Key,Lang,Language,x-pp-env,x-device-channel,TD-Session-Key,did,x-www-csapp,Td-Session-Path,Td-Session-Query,Td-Session-Body,Td-Session-Sign,tz', 'Alt-Svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000', 'Via': '1.1 google, 1.1 PSmgdfDEN1vd94:2 (W), 1.1 erben37:4 (W)', 'X-Px': 'ms erben37MEL,ms PSmgdfDEN1vd94DEN(origin)', 'x-ws-request-id': '6801c8e4_erben37_40830-10928', 'Access-Control-Max-Age': '*', 'Access-Control-Expose-Headers': '*', 'Expires': '*', 'Cache-Control': '*'}
+2025-04-18 13:37:09,836 - INFO - Response content: {"code":"OK","data":{"id":"938","title":"THE MONSTERS - Tasty Macarons Vinyl Face Blind Box","subTitle":"POP MART","brandId":18,"type":"normal","isHot":true,"show":true,"descImages":["https://prod-eurasian-res.popmart.com/default/20241029_173901_101748____1200_01_____1200x672.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_074011____1200_02_____1200x1101.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_195763____1200_03_____1200x1438.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_581207____1200_04_____1200x414.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_826037____1200_05_____1200x1015.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_290163____1200_06_____1200x781.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173902_993526____1200_07_____1200x1077.jpg","https://prod-eurasian-res.popmart.com/default/20241029_173901_548359____1200_08_____1200x960.jpg","https://prod-eurasia...
+2025-04-18 13:37:09,837 - INFO - Product data keys: ['id', 'title', 'subTitle', 'brandId', 'type', 'isHot', 'show', 'descImages', 'bannerImages', 'isPublish', 'showTime', 'hideTime', 'upTime', 'downTime', 'mainImage', 'desc', 'parameters', 'skus', 'isAvailable', 'limitQuantity', 'purchasedQuantity', 'shareURL', 'logicCategory', 'qualify', 'showCategories', 'banners', 'spec', 'brand', 'spuExtID', 'userQualificationInfo', 'spuURL', 'expressType', 'saleChannel']
