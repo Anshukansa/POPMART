@@ -46,31 +46,18 @@ class GlobalMonitor:
 
     def generate_signature(self, params, timestamp, method="get"):
         """Generate the signature ('s' parameter) for PopMart API"""
-        logger.debug(f"Generating signature for params: {params}, timestamp: {timestamp}, method: {method}")
+        logger.debug(f"Generating signature for params: {params}, timestamp: {timestamp}")
         
-        if method.lower() == "get":
-            filtered_params = {key: str(value) for key, value in params.items() if value}
-        else:
-            filtered_params = params.copy()
-
-        def sort_object(obj):
-            if isinstance(obj, dict):
-                return {k: sort_object(obj[k]) for k in sorted(obj.keys())}
-            elif isinstance(obj, list):
-                return [sort_object(item) for item in obj]
-            else:
-                return obj
-        
-        sorted_params = sort_object(filtered_params)
+        # Simplified signature generation (based on working code)
         salt = "W_ak^moHpMla"
-        json_string = json.dumps(sorted_params, separators=(',', ':'))
+        json_string = json.dumps(params, separators=(',', ':'))
         string_to_hash = f"{json_string}{salt}{timestamp}"
         signature = hashlib.md5(string_to_hash.encode('utf-8')).hexdigest()
         
         logger.debug(f"Generated signature: {signature}")
         return signature
 
-    def make_api_request_with_retry(self, endpoint, params, method="get", country="GLOBAL", language="en", retries=3):
+    def make_api_request_with_retry(self, endpoint, params, method="get", country="AU", language="en", retries=3):
         """Make an API request with retry logic"""
         logger.debug(f"Making API request to {endpoint} with retries={retries}")
         
@@ -78,23 +65,20 @@ class GlobalMonitor:
             try:
                 logger.debug(f"Attempt {attempt + 1}/{retries} for endpoint: {endpoint}")
                 return self.make_api_request(endpoint, params, method, country, language)
-            except HTTPError as e:
-                logger.error(f"Attempt {attempt + 1}: HTTP Error for {endpoint}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1}: Error for {endpoint}: {str(e)}")
                 if attempt < retries - 1:
                     retry_delay = 5
                     logger.debug(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)  # wait for 5 seconds before retrying
+                    time.sleep(retry_delay)
                 else:
                     logger.error(f"Max retries reached for {endpoint}")
-            except Exception as e:
-                logger.error(f"Request Error for {endpoint}: {str(e)}")
-                break
                 
         logger.error(f"Failed after {retries} retries for endpoint: {endpoint}")
         return {"error": f"Failed after {retries} retries", "data": None}
 
-    def make_api_request(self, endpoint, params, method="get", country="GLOBAL", language="en"):
-        """Make an API request to PopMart API"""
+    def make_api_request(self, endpoint, params, method="get", country="AU", language="en"):
+        """Make an API request to PopMart API - Updated with working implementation"""
         base_url = "https://prod-global-api.popmart.com"
         url = f"{base_url}{endpoint}"
         
@@ -107,22 +91,20 @@ class GlobalMonitor:
         request_params["s"] = signature
         request_params["t"] = timestamp
         
-        client_key = "rmdxjisjk7gwykcix"
-        x_sign_base = f"{timestamp},{client_key}"
-        x_sign_hash = hashlib.md5(x_sign_base.encode('utf-8')).hexdigest()
-        x_sign = f"{x_sign_hash},{timestamp}"
-
+        # Updated headers based on working implementation
         headers = {
             "accept": "application/json, text/plain, */*",
             "accept-language": f"en-{country},en-US;q=0.9,en;q=0.8",
-            "clientkey": client_key,
+            "clientkey": "rmdxjisjk7gwykcix",
             "country": country,
             "language": language,
             "origin": "https://www.popmart.com",
             "referer": "https://www.popmart.com/",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-            "x-sign": x_sign,
-            "tz": "Australia/Sydney"
+            "x-client-country": country,
+            "x-client-namespace": "eurasian", 
+            "x-device-os-type": "web",
+            "x-project-id": "eude"
         }
         
         logger.debug(f"Request headers: {headers}")
@@ -134,8 +116,8 @@ class GlobalMonitor:
             else:
                 logger.debug(f"Sending POST request to {url} with JSON body: {request_params}")
                 response = requests.post(url, json=request_params, headers=headers, timeout=10)
-                
-            response.raise_for_status()
+            
+            # Don't raise_for_status() - just try to parse JSON like the working version
             response_data = response.json()
             logger.debug(f"Received response: Status {response.status_code}")
             
@@ -145,14 +127,14 @@ class GlobalMonitor:
                 
             return response_data
             
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Request Error: {str(e)}")
             # Log full details of the error for debugging
             logger.exception("Detailed exception info:")
             return {"error": str(e), "data": None}
 
-    def get_product_stock_info(self, product_id_or_url, country="GLOBAL", language="en"):
-        """Get stock information for a specific product"""
+    def get_product_stock_info(self, product_id_or_url, country="AU", language="en"):
+        """Get stock information for a specific product - Updated with working implementation"""
         try:
             logger.info(f"Getting stock info for product: {product_id_or_url} in {country}")
             
@@ -211,7 +193,19 @@ class GlobalMonitor:
             return {
                 "product_id": product_id, 
                 "title": product_title,
-                "in_stock": in_stock
+                "in_stock": in_stock,
+                "skus": [
+                    {
+                        "sku_id": sku.get("id"),
+                        "sku_title": sku.get("title"),
+                        "sku_code": sku.get("skuCode"),
+                        "price": sku.get("price"),
+                        "discount_price": sku.get("discountPrice"),
+                        "currency": sku.get("currency"),
+                        "stock": sku.get("stock", {}).get("onlineStock", 0),
+                        "lock_stock": sku.get("stock", {}).get("onlineLockStock", 0)
+                    } for sku in skus
+                ]
             }
             
         except Exception as e:
@@ -258,10 +252,11 @@ class GlobalMonitor:
                         
                     logger.info(f"Checking stock for {product_name} (ID: {product_id}, Link: {global_link})")
                     
-                    stock_info = self.get_product_stock_info(product_id)
+                    # Use AU as country instead of GLOBAL (based on working code)
+                    stock_info = self.get_product_stock_info(product_id, country="AU")
                     
                     if not stock_info:
-                        logger.warning(f"[GLOBAL] Could not get stock info for {product_name} (ID: {product_id})")
+                        logger.warning(f"[AU] Could not get stock info for {product_name} (ID: {product_id})")
                         continue
                         
                     is_in_stock = stock_info["in_stock"]
@@ -271,17 +266,17 @@ class GlobalMonitor:
                     logger.debug(f"Product details: DB name={product_name}, API title={product_title}, in_stock={is_in_stock}")
                     
                     # Check if we should notify based on stock status change
-                    should_notify = self.db.should_notify_stock_change(product_id, "GLOBAL", is_in_stock)
+                    should_notify = self.db.should_notify_stock_change(product_id, "AU", is_in_stock)
                     
                     if is_in_stock:
                         if should_notify:
-                            logger.info(f"[GLOBAL] {product_name} is now in stock! Sending notifications.")
-                            self.notification_bot.send_stock_notification(product_id, product_name, global_link, is_global=True)
-                            logger.info(f"[GLOBAL] Notifications sent for {product_name}.")
+                            logger.info(f"[AU] {product_name} is now in stock! Sending notifications.")
+                            self.notification_bot.send_stock_notification(product_id, product_name, global_link, is_global=False)
+                            logger.info(f"[AU] Notifications sent for {product_name}.")
                         else:
-                            logger.info(f"[GLOBAL] {product_name} is still in stock. No notifications sent.")
+                            logger.info(f"[AU] {product_name} is still in stock. No notifications sent.")
                     else:
-                        logger.info(f"[GLOBAL] {product_name} is out of stock.")
+                        logger.info(f"[AU] {product_name} is out of stock.")
                         
                 except Exception as e:
                     logger.error(f"Error processing product {product}: {str(e)}")
@@ -312,8 +307,8 @@ class GlobalMonitor:
             product_name = product[1] if product else f"Product {product_id}"
             logger.info(f"Retrieved product from DB: {product_name} (ID: {product_id})")
             
-            # Check stock status
-            stock_info = self.get_product_stock_info(product_id)
+            # Check stock status using the AU region
+            stock_info = self.get_product_stock_info(product_id, country="AU")
             
             if not stock_info:
                 logger.error(f"Could not check stock status for {product_id}")
@@ -322,14 +317,31 @@ class GlobalMonitor:
             is_in_stock = stock_info["in_stock"]
             product_title = stock_info.get("title", "Unknown Product")
             
+            # Format detailed SKU information for the dashboard
+            sku_details = []
+            for sku in stock_info.get("skus", []):
+                price = f"{float(sku['price'])/100:.2f}" if sku.get('price') else "N/A"
+                discount = f"{float(sku['discount_price'])/100:.2f}" if sku.get('discount_price') else "N/A"
+                
+                sku_details.append({
+                    "title": sku.get('sku_title', 'Unknown'),
+                    "id": sku.get('sku_id', 'Unknown'),
+                    "code": sku.get('sku_code', 'Unknown'),
+                    "price": f"{price} {sku.get('currency', 'AUD')}",
+                    "discount": f"{discount} {sku.get('currency', 'AUD')}",
+                    "stock": sku.get('stock', 0),
+                    "locked_stock": sku.get('lock_stock', 0)
+                })
+            
             logger.info(f"Stock check result for {product_title} (ID: {product_id}): {'In Stock' if is_in_stock else 'Out of Stock'}")
             
             return {
                 "success": True, 
                 "product_name": product_name,
                 "product_title": product_title, 
-                "in_stock": is_in_stock, 
-                "message": f"Global store: {'In Stock' if is_in_stock else 'Out of Stock'}"
+                "in_stock": is_in_stock,
+                "sku_details": sku_details,
+                "message": f"AU store: {'In Stock' if is_in_stock else 'Out of Stock'}"
             }
             
         except Exception as e:
@@ -340,4 +352,4 @@ class GlobalMonitor:
 # Example usage:
 # notification_bot_token = "YOUR_BOT_TOKEN"
 # global_monitor = GlobalMonitor(notification_bot_token)
-# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock status
+# global_monitor.check_all_monitored_products()  # Checks all monitored products for stock statuss
