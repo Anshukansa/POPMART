@@ -4,14 +4,6 @@ import time
 import json
 from database import Database
 
-# Import telebot directly - this is the fix
-try:
-    import telebot
-except ImportError:
-    # Fallback for direct HTTP API use
-    telebot = None
-    logging.warning("Could not import telebot module, falling back to HTTP API")
-
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -22,10 +14,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class NotificationBot:
+    """Pure HTTP implementation of Telegram bot without telebot dependency"""
+    
     def __init__(self, token):
         self.token = token
         self.db = Database()
-        logger.info("Notification bot initialized")
+        logger.info("Notification bot initialized with HTTP API approach")
 
     def send_message(self, chat_id, message):
         """Send a message to a Telegram chat using the HTTP API directly"""
