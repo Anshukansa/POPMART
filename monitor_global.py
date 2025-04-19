@@ -320,13 +320,66 @@ async def check_all_products():
                 found_global_links = True
                 logger.info(f"Checking global stock for: {monitor['product_name']} ({global_link})")
                 
-                # Add debug logs before and after awaiting
-                logger.info(f"ABOUT TO AWAIT check_product_async for {monitor['product_name']}")
+                # REPLACED CALL TO check_product_async WITH THE FUNCTION'S IMPLEMENTATION
                 try:
-                    await check_product_async(monitor)
-                    logger.info(f"SUCCESSFULLY COMPLETED check_product_async for {monitor['product_name']}")
+                    # Only check Global link - using dictionary-style access for sqlite3.Row
+                    if not global_link:
+                        continue
+                        
+                    product_id = extract_product_id_from_url(global_link)
+                    
+                    if not product_id:
+                        logger.warning(f"Could not extract product ID from URL: {global_link}")
+                        continue
+                        
+                    # Use the same approach as in test.py
+                    logger.info(f"Getting detailed stock info for product ID: {product_id}")
+                    
+                    # Get product details directly
+                    details = get_product_details(product_id)
+                    
+                    if "data" not in details or not details["data"]:
+                        logger.info(f"Product {monitor['product_name']} (ID: {product_id}) - No data found from API")
+                        logger.info(f"Product {monitor['product_name']} is OUT OF STOCK on Global (no data)")
+                        continue
+                        
+                    product_data = details["data"]
+                    skus = product_data.get("skus", [])
+                    
+                    any_in_stock = False
+                    
+                    # Log each SKU exactly as in test.py
+                    for sku in skus:
+                        stock = sku.get("stock", {}).get("onlineStock", 0)
+                        if stock > 0:
+                            any_in_stock = True
+                        
+                        price = sku.get("price", 0)
+                        discount_price = sku.get("discountPrice", 0)
+                        price_str = f"{float(price)/100:.2f}" if price else "N/A"
+                        discount_str = f"{float(discount_price)/100:.2f}" if discount_price else "N/A"
+                        
+                        logger.info(f"SKU: {sku.get('title')} (ID: {sku.get('id')})")
+                        logger.info(f"  Code: {sku.get('skuCode')}")
+                        logger.info(f"  Price: {price_str} {sku.get('currency')} (Discount: {discount_str} {sku.get('currency')})")
+                        logger.info(f"  Stock: {stock} (Locked: {sku.get('stock', {}).get('onlineLockStock', 0)})")
+                    
+                    logger.info(f"Product: {product_data.get('title', 'Unknown')} (ID: {product_id})")
+                    logger.info(f"Brand: {product_data.get('brand', {}).get('name', 'Unknown')}")
+                    logger.info(f"Status: {'Published' if product_data.get('isPublish') else 'Not Published'} / {'Available' if product_data.get('isAvailable') else 'Not Available'}")
+                    logger.info(f"SKUs: {len(skus)}")
+                    
+                    # Add our own clear stock status message
+                    if any_in_stock:
+                        logger.info(f"ALERT: Product {monitor['product_name']} is IN STOCK on Global!")
+                        await notify_users_about_stock(monitor['product_id'], "Global", global_link)
+                    else:
+                        logger.info(f"Product {monitor['product_name']} is OUT OF STOCK on Global")
+                        
                 except Exception as e:
-                    logger.error(f"ERROR in check_product_async for {monitor['product_name']}: {str(e)}", exc_info=True)
+                    product_name = monitor['product_name'] if 'product_name' in monitor else 'unknown'
+                    logger.error(f"Error checking product {product_name}: {str(e)}", exc_info=True)
+                    logger.info(f"Product {product_name} stock check FAILED due to error")
             
         if not found_global_links:
             logger.warning("No products with Global links found in database")
