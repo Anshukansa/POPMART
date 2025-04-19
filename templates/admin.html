@@ -4,187 +4,566 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Popmart Monitor Admin</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Simple CSS for Admin Panel */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background-color: #222;
+            color: white;
+            padding: 15px 0;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .nav {
+            background-color: #444;
+            padding: 10px 0;
+        }
+        
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 5px 10px;
+        }
+        
+        .nav a:hover {
+            background-color: #555;
+            border-radius: 4px;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .button {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        
+        .button.secondary {
+            background-color: #2196F3;
+        }
+        
+        .button.danger {
+            background-color: #f44336;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+        }
+        
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .alert.success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        
+        .alert.danger {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        
+        form {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        
+        .stat-card {
+            flex: 1 1 200px;
+            margin: 10px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .login-form {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 30px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        /* Stock status indicators */
+        .status-in-stock {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .status-out-of-stock {
+            color: #f44336;
+        }
+        
+        /* Log styles */
+        .logs {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border: 1px solid #ddd;
+            height: 500px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 <body>
+    {% if section == 'login' %}
+    <!-- Login Section (when not logged in) -->
+    <div class="login-form">
+        <h2>Admin Login</h2>
+        
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="alert {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+        
+        <form method="post" action="{{ url_for('login') }}">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+            
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            
+            <button type="submit" class="button">Login</button>
+        </form>
+    </div>
+    
+    {% else %}
+    <!-- Main Admin Interface (when logged in) -->
+    <div class="header">
+        <div class="container header-content">
+            <div class="logo">Popmart Monitor Admin</div>
+            <a href="{{ url_for('logout') }}" class="button danger">Logout</a>
+        </div>
+    </div>
+    
+    <div class="nav">
+        <div class="container">
+            <a href="{{ url_for('index') }}">Dashboard</a>
+            <a href="{{ url_for('users') }}">Users</a>
+            <a href="{{ url_for('products') }}">Products</a>
+            <a href="{{ url_for('monitoring') }}">Monitoring</a>
+            <a href="{{ url_for('view_logs') }}">Logs</a>
+        </div>
+    </div>
+    
     <div class="container">
-        {% if page == 'login' %}
-            <h1>Admin Login</h1>
-            {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                    <div class="flash-messages">
-                        {% for message in messages %}
-                            <p>{{ message }}</p>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            {% endwith %}
-            <form method="post">
-                <div class="form-group">
-                    <label for="username">Username:</label>
-                    <input type="text" id="username" name="username" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">Password:</label>
-                    <input type="password" id="password" name="password" required>
-                </div>
-                <button type="submit">Login</button>
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="alert {{ category }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+        
+        {% if section == 'dashboard' %}
+        <!-- Dashboard Section -->
+        <h2>Dashboard</h2>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">{{ user_count }}</div>
+                <div>Users</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-number">{{ product_count }}</div>
+                <div>Products</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-number">{{ monitor_count }}</div>
+                <div>Active Monitors</div>
+            </div>
+        </div>
+        
+        {% elif section == 'users' %}
+        <!-- Users Section -->
+        <h2>Users Management</h2>
+        
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Balance</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.user_id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>${{ user.balance|float|round(2) }}</td>
+                        <td>
+                            <a href="{{ url_for('view_user', user_id=user.user_id) }}" class="button secondary">View</a>
+                            <button onclick="showAddBalanceForm({{ user.user_id }})" class="button">Add Balance</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Add Balance Form (initially hidden) -->
+        <div id="balanceForm" class="card" style="display: none;">
+            <h3>Add Balance</h3>
+            <form method="post" action="{{ url_for('add_balance') }}">
+                <input type="hidden" id="balanceUserId" name="user_id" value="">
+                <label for="amount">Amount ($)</label>
+                <input type="number" id="amount" name="amount" step="0.01" min="0.01" required>
+                <button type="submit" class="button">Add Balance</button>
             </form>
-        {% else %}
-            <h1>Popmart Monitor Admin</h1>
-            {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                    <div class="flash-messages">
-                        {% for message in messages %}
-                            <p>{{ message }}</p>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            {% endwith %}
+        </div>
+        
+        {% elif section == 'user_detail' %}
+        <!-- User Detail Section -->
+        <h2>User Details: {{ user.username }}</h2>
+        
+        <div class="card">
+            <h3>User Information</h3>
+            <p><strong>User ID:</strong> {{ user.user_id }}</p>
+            <p><strong>Username:</strong> {{ user.username }}</p>
+            <p><strong>Balance:</strong> ${{ user.balance|float|round(2) }}</p>
+            <p><strong>Created:</strong> {{ user.created_at }}</p>
             
-            <div class="section">
-                <h2>Users</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Username</th>
-                            <th>Balance</th>
-                            <th>Created At</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for user in users %}
-                            <tr>
-                                <td>{{ user[0] }}</td>
-                                <td>{{ user[1] }}</td>
-                                <td>${{ "%.2f"|format(user[2]) }}</td>
-                                <td>{{ user[3] }}</td>
-                                <td>
-                                    <form method="post" action="{{ url_for('add_balance') }}" class="inline-form">
-                                        <input type="hidden" name="user_id" value="{{ user[0] }}">
-                                        <input type="number" name="amount" step="0.01" min="0.01" placeholder="Amount" required>
-                                        <button type="submit">Add Balance</button>
-                                    </form>
-                                    <form method="post" action="{{ url_for('set_balance') }}" class="inline-form" style="margin-left: 10px;">
-                                        <input type="hidden" name="user_id" value="{{ user[0] }}">
-                                        <input type="number" name="balance" step="0.01" min="0" placeholder="New Balance" required>
-                                        <button type="submit">Set Balance</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            <h3>Add Balance</h3>
+            <form method="post" action="{{ url_for('add_balance') }}">
+                <input type="hidden" name="user_id" value="{{ user.user_id }}">
+                <label for="amount">Amount to Add ($)</label>
+                <input type="number" id="amount" name="amount" step="0.01" min="0.01" required>
+                <button type="submit" class="button">Add Balance</button>
+            </form>
             
-            <div class="section">
-                <h2>Products</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Global Link</th>
-                            <th>AU Link</th>
-                            <th>Price</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for product in products %}
-                            <tr>
-                                <td>{{ product[0] }}</td>
-                                <td>{{ product[1] }}</td>
-                                <td>
-                                    {% if product[2] %}
-                                        <a href="{{ product[2] }}" target="_blank">Global Link</a>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if product[3] %}
-                                        <a href="{{ product[3] }}" target="_blank">AU Link</a>
-                                    {% endif %}
-                                </td>
-                                <td>${{ "%.2f"|format(product[4]) }}</td>
-                                <td>
-                                    <div style="display: flex;">
-                                        <form method="post" action="{{ url_for('test_global_stock') }}" style="margin-right: 5px;">
-                                            <input type="hidden" name="product_id" value="{{ product[0] }}">
-                                            <button type="submit">Test Global</button>
-                                        </form>
-                                        <form method="post" action="{{ url_for('test_au_stock') }}">
-                                            <input type="hidden" name="product_id" value="{{ product[0] }}">
-                                            <button type="submit">Test AU</button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h3>Set Balance</h3>
+            <form method="post" action="{{ url_for('update_balance') }}">
+                <input type="hidden" name="user_id" value="{{ user.user_id }}">
+                <label for="new_balance">New Balance ($)</label>
+                <input type="number" id="new_balance" name="new_balance" step="0.01" min="0" value="{{ user.balance|float|round(2) }}" required>
+                <button type="submit" class="button secondary">Update Balance</button>
+            </form>
+        </div>
+        
+        <div class="card">
+            <h3>Active Monitoring Subscriptions</h3>
+            {% if monitoring %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Product</th>
+                        <th>Expires</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for monitor in monitoring %}
+                    <tr>
+                        <td>{{ monitor.id }}</td>
+                        <td>{{ monitor.product_name }}</td>
+                        <td>{{ monitor.expiry_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>This user is not monitoring any products.</p>
+            {% endif %}
+        </div>
+        
+        {% elif section == 'products' %}
+        <!-- Products Section -->
+        <h2>Products Management</h2>
+        
+        <a href="{{ url_for('add_product') }}" class="button">Add New Product</a>
+        
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Global Link</th>
+                        <th>AU Link</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                    <tr>
+                        <td>{{ product.product_id }}</td>
+                        <td>{{ product.product_name }}</td>
+                        <td>${{ product.price|float|round(2) }}</td>
+                        <td>
+                            {% if product.global_link %}
+                            <a href="{{ product.global_link }}" target="_blank">Link</a>
+                            {% else %}
+                            None
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if product.au_link %}
+                            <a href="{{ product.au_link }}" target="_blank">Link</a>
+                            {% else %}
+                            None
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('edit_product', product_id=product.product_id) }}" class="button secondary">Edit</a>
+                            <a href="{{ url_for('test_stock', product_id=product.product_id) }}" class="button">Test Stock</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% elif section == 'add_product' %}
+        <!-- Add Product Section -->
+        <h2>Add New Product</h2>
+        
+        <div class="card">
+            <form method="post" action="{{ url_for('add_product') }}">
+                <label for="product_name">Product Name</label>
+                <input type="text" id="product_name" name="product_name" required>
                 
-                <h3>Add New Product</h3>
-                <form method="post" action="{{ url_for('add_product') }}">
-                    <div class="form-group">
-                        <label for="product_id">Product ID:</label>
-                        <input type="text" id="product_id" name="product_id" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="product_name">Product Name:</label>
-                        <input type="text" id="product_name" name="product_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="global_link">Global Link:</label>
-                        <input type="url" id="global_link" name="global_link">
-                    </div>
-                    <div class="form-group">
-                        <label for="au_link">AU Link:</label>
-                        <input type="url" id="au_link" name="au_link">
-                    </div>
-                    <div class="form-group">
-                        <label for="price">Monitoring Price ($):</label>
-                        <input type="number" id="price" name="price" step="0.01" min="0.01" required>
-                    </div>
-                    <button type="submit">Add Product</button>
-                </form>
+                <label for="global_link">Global Link</label>
+                <input type="text" id="global_link" name="global_link" placeholder="https://www.popmart.com/goods/detail?spuId=...">
+                
+                <label for="au_link">AU Link</label>
+                <input type="text" id="au_link" name="au_link" placeholder="https://popmart.au/products/...">
+                
+                <label for="price">Monitoring Price ($)</label>
+                <input type="number" id="price" name="price" step="0.01" min="0.01" required>
+                
+                <button type="submit" class="button">Add Product</button>
+                <a href="{{ url_for('products') }}" class="button secondary">Cancel</a>
+            </form>
+        </div>
+        
+        {% elif section == 'edit_product' %}
+        <!-- Edit Product Section -->
+        <h2>Edit Product</h2>
+        
+        <div class="card">
+            <form method="post" action="{{ url_for('edit_product', product_id=product.product_id) }}">
+                <label for="product_name">Product Name</label>
+                <input type="text" id="product_name" name="product_name" value="{{ product.product_name }}" required>
+                
+                <label for="global_link">Global Link</label>
+                <input type="text" id="global_link" name="global_link" value="{{ product.global_link or '' }}">
+                
+                <label for="au_link">AU Link</label>
+                <input type="text" id="au_link" name="au_link" value="{{ product.au_link or '' }}">
+                
+                <label for="price">Monitoring Price ($)</label>
+                <input type="number" id="price" name="price" step="0.01" min="0.01" value="{{ product.price }}" required>
+                
+                <button type="submit" class="button">Update Product</button>
+                <a href="{{ url_for('products') }}" class="button secondary">Cancel</a>
+            </form>
+        </div>
+        
+        {% elif section == 'monitoring' %}
+        <!-- Monitoring Section -->
+        <h2>Active Monitoring</h2>
+        
+        <div class="card">
+            {% if monitors %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>User</th>
+                        <th>Product</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for monitor in monitors %}
+                    <tr>
+                        <td>{{ monitor.id }}</td>
+                        <td>{{ monitor.username }} ({{ monitor.user_id }})</td>
+                        <td>{{ monitor.product_name }}</td>
+                        <td>{{ monitor.expiry_date }}</td>
+                        <td>
+                            <a href="{{ url_for('cancel_monitoring', monitor_id=monitor.id) }}" class="button danger" onclick="return confirm('Are you sure?')">Cancel</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>There are no active monitoring subscriptions.</p>
+            {% endif %}
+        </div>
+        
+        {% elif section == 'logs' %}
+        <!-- Logs Section -->
+        <h2>Monitoring Logs</h2>
+        
+        <div class="card">
+            <div style="text-align: right; margin-bottom: 10px;">
+                <a href="{{ url_for('view_logs') }}" class="button">Refresh Logs</a>
             </div>
+            <div class="logs" style="background-color: #f5f5f5; padding: 10px; border: 1px solid #ddd; height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;">
+                {{ logs }}
+            </div>
+        </div>
+        
+        {% elif section == 'test_stock' %}
+        <!-- Test Stock Section -->
+        <h2>Stock Test Results: {{ product.product_name }}</h2>
+        
+        <div class="card">
+            <h3>Product Information</h3>
+            <p><strong>ID:</strong> {{ product.product_id }}</p>
+            <p><strong>Name:</strong> {{ product.product_name }}</p>
+            <p><strong>Price:</strong> ${{ product.price|float|round(2) }}</p>
             
-            <div class="section">
-                <h2>Active Monitoring</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Product ID</th>
-                            <th>Product Name</th>
-                            <th>Global Link</th>
-                            <th>AU Link</th>
-                            <th>Subscriber Count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in monitoring %}
-                            <tr>
-                                <td>{{ item[0] }}</td>
-                                <td>{{ item[1] }}</td>
-                                <td>
-                                    {% if item[2] %}
-                                        <a href="{{ item[2] }}" target="_blank">Global Link</a>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if item[3] %}
-                                        <a href="{{ item[3] }}" target="_blank">AU Link</a>
-                                    {% endif %}
-                                </td>
-                                <td>{{ item[4] }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h3>Stock Status</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Site</th>
+                        <th>Status</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if stock_results.global %}
+                    <tr>
+                        <td>Popmart Global</td>
+                        <td>
+                            {% if stock_results.global.status == 'In Stock' %}
+                            <span style="color: green; font-weight: bold;">{{ stock_results.global.status }}</span>
+                            {% else %}
+                            <span style="color: red;">{{ stock_results.global.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="{{ stock_results.global.link }}" target="_blank">View</a></td>
+                    </tr>
+                    {% endif %}
+                    
+                    {% if stock_results.au %}
+                    <tr>
+                        <td>Popmart AU</td>
+                        <td>
+                            {% if stock_results.au.status == 'In Stock' %}
+                            <span style="color: green; font-weight: bold;">{{ stock_results.au.status }}</span>
+                            {% else %}
+                            <span style="color: red;">{{ stock_results.au.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="{{ stock_results.au.link }}" target="_blank">View</a></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 20px;">
+                <a href="{{ url_for('products') }}" class="button secondary">Back to Products</a>
+                <a href="{{ url_for('test_stock', product_id=product.product_id) }}" class="button">Refresh</a>
             </div>
+        </div>
         {% endif %}
     </div>
+    
+    <script>
+        function showAddBalanceForm(userId) {
+            document.getElementById('balanceUserId').value = userId;
+            document.getElementById('balanceForm').style.display = 'block';
+        }
+    </script>
+    {% endif %}
 </body>
 </html>

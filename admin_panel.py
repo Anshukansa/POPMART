@@ -1,181 +1,274 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+"""
+Simple admin panel for managing users, products, and monitoring
+"""
 import os
+import time
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+import database as db
+import monitor_global
+import monitor_au
+from functools import wraps
 import logging
-from monitors.selenium_monitor import SeleniumMonitor
+from io import StringIO
+import threading
+from config import ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_PORT
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("web.log"),
-              logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
-
-# Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your_secret_key')
+app.secret_key = os.urandom(24)
 
-# Initialize the monitor
-bot_token = os.environ.get('BOT_TOKEN')
-if not bot_token:
-    logger.warning("No BOT_TOKEN environment variable found. Some features may not work.")
+# Setup logging
+log_stream = StringIO()
+file_handler = logging.StreamHandler(log_stream)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-# Initialize the Selenium monitor
-logger.info("Initializing SeleniumMonitor for web interface")
-selenium_monitor = SeleniumMonitor(bot_token or "dummy_token")
-logger.info("GlobalMonitor initialized successfully")
+# Add handlers to all loggers we want to capture
+loggers = [
+    logging.getLogger('monitor_global'),
+    logging.getLogger('monitor_au'),
+    logging.getLogger('telegram_bot')
+]
 
+for logger in loggers:
+    logger.addHandler(file_handler)
+
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Routes
 @app.route('/')
+@login_required
 def index():
-    """Home page - redirects to dashboard if logged in, otherwise shows login form"""
-    if session.get('logged_in'):
-        return redirect(url_for('dashboard'))
-    return render_template('index.html')
+    user_count = len(db.get_all_users())
+    product_count = len(db.get_all_products())
+    monitors = db.get_all_active_monitors()
+    monitor_count = len(monitors)
+    
+    return render_template('admin.html', 
+                           user_count=user_count,
+                           product_count=product_count,
+                           monitor_count=monitor_count,
+                           section='dashboard')
 
-@app.route('/', methods=['POST'])
-def login():
-    """Handle login form submission"""
-    password = request.form.get('password')
-    
-    # Simple password check (you might want to use a more secure approach)
-    if password == os.environ.get('ADMIN_PASSWORD', 'admin'):
-        session['logged_in'] = True
-        flash('You are now logged in', 'success')
-        return redirect(url_for('dashboard'))
-    else:
-        flash('Incorrect password', 'danger')
-        return redirect(url_for('index'))
+# Monitoring logs
+@app.route('/logs')
+@login_required
+def view_logs():
+    logs = log_stream.getvalue()
+    return render_template('admin.html', logs=logs, section='logs')
 
-@app.route('/dashboard')
-def dashboard():
-    """Display admin dashboard"""
-    if not session.get('logged_in'):
-        flash('Please log in first', 'warning')
-        return redirect(url_for('index'))
+# Test stock checking
+@app.route('/test_stock/<int:product_id>')
+@login_required
+def test_stock(product_id):
+    product = db.get_product(product_id)
+    results = {}
     
-    # Get products from database
-    products = selenium_monitor.db.get_all_products()
-    
-    return render_template('dashboard.html', products=products)
-
-@app.route('/add_product', methods=['POST'])
-def add_product():
-    """Add a new product to monitor"""
-    if not session.get('logged_in'):
-        flash('Please log in first', 'warning')
-        return redirect(url_for('index'))
-    
-    product_name = request.form.get('product_name')
-    global_link = request.form.get('global_link')
-    au_link = request.form.get('au_link')
-    
-    if not product_name or not global_link:
-        flash('Product name and global link are required', 'warning')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        selenium_monitor.db.add_product(product_name, global_link, au_link)
-        flash(f'Product "{product_name}" added successfully', 'success')
-    except Exception as e:
-        logger.error(f"Error adding product: {str(e)}")
-        flash(f'Error adding product: {str(e)}', 'danger')
-    
-    return redirect(url_for('dashboard'))
-
-@app.route('/toggle_monitoring/<product_id>')
-def toggle_monitoring(product_id):
-    """Toggle monitoring status for a product"""
-    if not session.get('logged_in'):
-        flash('Please log in first', 'warning')
-        return redirect(url_for('index'))
-    
-    try:
-        current_status = selenium_monitor.db.is_product_monitored(product_id)
-        selenium_monitor.db.set_product_monitoring(product_id, not current_status)
-        
-        status_msg = "enabled" if not current_status else "disabled"
-        flash(f'Monitoring {status_msg} for product {product_id}', 'success')
-    except Exception as e:
-        logger.error(f"Error toggling monitoring: {str(e)}")
-        flash(f'Error toggling monitoring: {str(e)}', 'danger')
-    
-    return redirect(url_for('dashboard'))
-
-@app.route('/test_global_stock', methods=['POST'])
-def test_global_stock():
-    """Test checking stock for a product using Selenium"""
-    if not session.get('logged_in'):
-        flash('Please log in first', 'warning')
-        return redirect(url_for('index'))
-    
-    product_id = request.form.get('product_id')
-    if not product_id:
-        flash('No product ID provided', 'warning')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        result = selenium_monitor.check_product_stock(product_id)
-        
-        if result.get('success'):
-            flash(f"Stock check result: {result.get('message')} - {result.get('product_title')}", 'info')
+    if product['global_link']:
+        # Test Global stock
+        product_id_global = monitor_global.extract_product_id_from_url(product['global_link'])
+        logger.info(f"Testing global stock for product: {product['product_name']} (ID: {product_id})")
+        if product_id_global:
+            in_stock_global = monitor_global.check_product_stock(product_id_global, "AU")  # Use AU country code
+            results['global'] = {
+                'status': 'In Stock' if in_stock_global else 'Out of Stock',
+                'link': product['global_link']
+            }
+            logger.info(f"Global stock result: {results['global']['status']}")
         else:
-            flash(f"Stock check failed: {result.get('message')}", 'warning')
-    except Exception as e:
-        logger.error(f"Error testing stock: {str(e)}")
-        flash(f'Error testing stock: {str(e)}', 'danger')
+            logger.warning(f"Could not extract global product ID from URL: {product['global_link']}")
     
-    return redirect(url_for('dashboard'))
+    if product['au_link']:
+        # Test AU stock
+        logger.info(f"Testing AU stock for product: {product['product_name']} (ID: {product_id})")
+        in_stock_au = monitor_au.check_stock(product['au_link'])
+        results['au'] = {
+            'status': 'In Stock' if in_stock_au else 'Out of Stock',
+            'link': product['au_link']
+        }
+        logger.info(f"AU stock result: {results['au']['status']}")
+    
+    flash(f'Stock check complete for {product["product_name"]}', 'success')
+    return render_template('admin.html', 
+                          product=product, 
+                          stock_results=results, 
+                          section='test_stock')
 
-@app.route('/test_au_stock', methods=['POST'])
-def test_au_stock():
-    """Test checking Australian store stock"""
-    if not session.get('logged_in'):
-        flash('Please log in first', 'warning')
-        return redirect(url_for('index'))
+@app.route('/api/test_stock/<int:product_id>')
+@login_required
+def api_test_stock(product_id):
+    product = db.get_product(product_id)
+    results = {
+        'product_name': product['product_name'],
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+    }
     
-    product_id = request.form.get('product_id')
-    if not product_id:
-        flash('No product ID provided', 'warning')
-        return redirect(url_for('dashboard'))
+    if product['global_link']:
+        # Test Global stock
+        product_id_global = monitor_global.extract_product_id_from_url(product['global_link'])
+        if product_id_global:
+            in_stock_global = monitor_global.check_product_stock(product_id_global)
+            results['global'] = {
+                'status': 'In Stock' if in_stock_global else 'Out of Stock',
+                'link': product['global_link']
+            }
     
-    try:
-        product = selenium_monitor.db.get_product(product_id)
-        if not product or len(product) < 4:
-            flash('Product not found or missing AU link', 'warning')
-            return redirect(url_for('dashboard'))
-        
-        au_link = product[3]  # Get AU link from the product
-        if not au_link:
-            flash('Product does not have an AU link', 'warning')
-            return redirect(url_for('dashboard'))
-        
-        product_name = product[1]
-        
-        # Process AU link
-        logger.info(f"Checking stock for: {au_link}")
-        
-        # For simplicity, just log that we'd check the AU link
-        # Normally you'd have an AU-specific check here
-        flash(f"[AU] {product_name} is out of stock.", 'info')
-    except Exception as e:
-        logger.error(f"Error testing AU stock: {str(e)}")
-        flash(f'Error testing AU stock: {str(e)}', 'danger')
+    if product['au_link']:
+        # Test AU stock
+        in_stock_au = monitor_au.check_stock(product['au_link'])
+        results['au'] = {
+            'status': 'In Stock' if in_stock_au else 'Out of Stock',
+            'link': product['au_link']
+        }
     
-    return redirect(url_for('dashboard'))
+    return jsonify(results)
+
+# Authentication
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid credentials', 'danger')
+    
+    return render_template('admin.html', section='login')
 
 @app.route('/logout')
 def logout():
-    """Log the user out"""
     session.pop('logged_in', None)
-    flash('You have been logged out', 'success')
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
 
-# Add cleanup handler to properly close Selenium drivers when Flask shuts down
-@app.teardown_appcontext
-def cleanup_selenium_drivers(exception=None):
-    selenium_monitor.cleanup()
+# Users management
+@app.route('/users')
+@login_required
+def users():
+    all_users = db.get_all_users()
+    return render_template('admin.html', users=all_users, section='users')
+
+@app.route('/users/add_balance', methods=['POST'])
+@login_required
+def add_balance():
+    user_id = request.form.get('user_id')
+    amount = float(request.form.get('amount', 0))
+    
+    if amount <= 0:
+        flash('Amount must be positive', 'danger')
+    else:
+        db.update_user_balance(user_id, amount)
+        flash(f'Added ${amount:.2f} to user {user_id}', 'success')
+    
+    return redirect(url_for('users'))
+
+@app.route('/users/update_balance', methods=['POST'])
+@login_required
+def update_balance():
+    user_id = request.form.get('user_id')
+    new_balance = float(request.form.get('new_balance', 0))
+    
+    if new_balance < 0:
+        flash('Balance cannot be negative', 'danger')
+        return redirect(url_for('view_user', user_id=user_id))
+    
+    # Get current balance
+    user = db.get_user(user_id)
+    current_balance = user['balance']
+    
+    # Calculate adjustment needed
+    adjustment = new_balance - current_balance
+    
+    # Update balance
+    db.update_user_balance(user_id, adjustment)
+    flash(f'Updated balance to ${new_balance:.2f} for user {user_id}', 'success')
+    
+    return redirect(url_for('view_user', user_id=user_id))
+
+@app.route('/users/view/<int:user_id>')
+@login_required
+def view_user(user_id):
+    user = db.get_user(user_id)
+    monitoring = db.get_user_monitoring(user_id)
+    return render_template('admin.html', user=user, monitoring=monitoring, section='user_detail')
+
+# Products management
+@app.route('/products')
+@login_required
+def products():
+    all_products = db.get_all_products()
+    return render_template('admin.html', products=all_products, section='products')
+
+@app.route('/products/add', methods=['GET', 'POST'])
+@login_required
+def add_product():
+    if request.method == 'POST':
+        product_name = request.form.get('product_name')
+        global_link = request.form.get('global_link')
+        au_link = request.form.get('au_link')
+        price = float(request.form.get('price', 0))
+        
+        if not product_name:
+            flash('Product name is required', 'danger')
+        elif price <= 0:
+            flash('Price must be positive', 'danger')
+        elif not (global_link or au_link):
+            flash('At least one link is required', 'danger')
+        else:
+            db.add_product(product_name, global_link, au_link, price)
+            flash(f'Product {product_name} added successfully', 'success')
+            return redirect(url_for('products'))
+    
+    return render_template('admin.html', section='add_product')
+
+@app.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
+@login_required
+def edit_product(product_id):
+    product = db.get_product(product_id)
+    
+    if request.method == 'POST':
+        product_name = request.form.get('product_name')
+        global_link = request.form.get('global_link')
+        au_link = request.form.get('au_link')
+        price = float(request.form.get('price', 0))
+        
+        if not product_name:
+            flash('Product name is required', 'danger')
+        elif price <= 0:
+            flash('Price must be positive', 'danger')
+        elif not (global_link or au_link):
+            flash('At least one link is required', 'danger')
+        else:
+            db.update_product(product_id, product_name, global_link, au_link, price)
+            flash(f'Product {product_name} updated successfully', 'success')
+            return redirect(url_for('products'))
+    
+    return render_template('admin.html', product=product, section='edit_product')
+
+@app.route('/monitoring')
+@login_required
+def monitoring():
+    all_monitors = db.get_all_active_monitors()
+    return render_template('admin.html', monitors=all_monitors, section='monitoring')
+
+@app.route('/monitoring/cancel/<int:monitor_id>')
+@login_required
+def cancel_monitoring(monitor_id):
+    db.cancel_monitoring(monitor_id)
+    flash('Monitoring cancelled successfully', 'success')
+    return redirect(url_for('monitoring'))
+
+def run_admin_panel():
+    """Start the admin panel Flask server"""
+    app.run(host='0.0.0.0', port=ADMIN_PORT, debug=False)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    run_admin_panel()

@@ -1,62 +1,47 @@
-import os
-from settings_bot import SettingsBot
-from notification_bot import NotificationBot
-from admin_panel import AdminPanel
-from monitors.selenium_monitor import GlobalMonitor
-from monitors.au_monitor import AUMonitor
+"""
+Main application entry point for the Popmart monitoring system
+"""
 import threading
-import time
-import schedule
+import logging
+import database as db
+import admin_panel
+import telegram_bot
+import monitor_global
+import monitor_au
 
-# Load environment variables
-SETTINGS_BOT_TOKEN = os.environ.get("SETTINGS_BOT_TOKEN")
-NOTIFICATION_BOT_TOKEN = os.environ.get("NOTIFICATION_BOT_TOKEN")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-def run_settings_bot():
-    """Run the settings bot"""
-    if SETTINGS_BOT_TOKEN:
-        bot = SettingsBot(SETTINGS_BOT_TOKEN)
-        bot.run()
-    else:
-        print("Settings bot token not found!")
-
-def run_admin_panel():
-    """Run the admin panel"""
-    panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
-    panel.run()
-
-def run_monitors():
-    """Run the monitoring scripts"""
-    if NOTIFICATION_BOT_TOKEN:
-        global_monitor = GlobalMonitor(NOTIFICATION_BOT_TOKEN)
-        au_monitor = AUMonitor(NOTIFICATION_BOT_TOKEN)
-        
-        # Schedule monitoring runs every 10 seconds
-        schedule.every(10).seconds.do(global_monitor.check_all_monitored_products)
-        schedule.every(10).seconds.do(au_monitor.check_all_monitored_products)
-        
-        while True:
-            schedule.run_pending()
-            time.sleep(1)  # Sleep for 1 second between schedule checks
-    else:
-        print("Notification bot token not found!")
-
-# Create the admin panel and expose its Flask app for Gunicorn
-panel = AdminPanel(ADMIN_USERNAME, ADMIN_PASSWORD, NOTIFICATION_BOT_TOKEN)
-app = panel.app  # Expose the Flask app for Gunicorn
+def main():
+    """Start all system components"""
+    # Initialize database
+    logger.info("Initializing database...")
+    db.init_db()
+    
+    # Start admin panel in a separate thread
+    logger.info("Starting admin panel...")
+    admin_thread = threading.Thread(target=admin_panel.run_admin_panel)
+    admin_thread.daemon = True
+    admin_thread.start()
+    
+    # Start monitoring scripts in separate threads
+    logger.info("Starting Popmart Global monitoring...")
+    global_monitor_thread = threading.Thread(target=monitor_global.start_monitoring)
+    global_monitor_thread.daemon = True
+    global_monitor_thread.start()
+    
+    logger.info("Starting Popmart AU monitoring...")
+    au_monitor_thread = threading.Thread(target=monitor_au.start_monitoring)
+    au_monitor_thread.daemon = True
+    au_monitor_thread.start()
+    
+    # Start settings bot (this will block the main thread)
+    logger.info("Starting settings bot...")
+    telegram_bot.run_settings_bot()
 
 if __name__ == "__main__":
-    # Start settings bot in a separate thread
-    settings_bot_thread = threading.Thread(target=run_settings_bot)
-    settings_bot_thread.daemon = True
-    settings_bot_thread.start()
-    
-    # Start monitoring in a separate thread
-    monitors_thread = threading.Thread(target=run_monitors)
-    monitors_thread.daemon = True
-    monitors_thread.start()
-    
-    # Run admin panel in the main thread
-    panel.run()
+    main()

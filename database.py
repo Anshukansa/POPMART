@@ -1,347 +1,214 @@
-import os
-from datetime import datetime, timedelta
-from database_setup import get_connection, DATABASE_URL
+"""
+Database models and connection handling
+"""
+import sqlite3
+import datetime
+from contextlib import contextmanager
+from config import DATABASE_PATH
 
-class Database:
-    def __init__(self):
-        # Get a connection from the setup module
-        self.conn = get_connection()
-    
-    def _execute_query(self, query, params=None, fetch=None):
-        """Execute a query with proper error handling"""
-        cursor = self.conn.cursor()
-        result = None
+# Initialize the database
+def init_db():
+    """Create the database tables if they don't exist"""
+    with get_db_connection() as conn:
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            balance REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
         
-        try:
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            
-            if fetch == 'one':
-                result = cursor.fetchone()
-            elif fetch == 'all':
-                result = cursor.fetchall()
-            else:
-                result = cursor.rowcount > 0
-                
-            self.conn.commit()
-        except Exception as e:
-            print(f"Database error executing query: {e}")
-            print(f"Query: {query}")
-            print(f"Params: {params}")
-            self.conn.rollback()
-            # Re-establish connection if it was lost
-            if "connection" in str(e).lower() or "timeout" in str(e).lower():
-                try:
-                    self.conn = get_connection()
-                except Exception as conn_err:
-                    print(f"Failed to re-establish connection: {conn_err}")
-        finally:
-            cursor.close()
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS products (
+            product_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT NOT NULL,
+            global_link TEXT,
+            au_link TEXT,
+            price REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
         
-        return result
-    
-    # User methods
-    def add_user(self, user_id, username):
-        """Add a user to the database if they don't exist"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = "INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)"
-            params = (user_id, username)
-        else:
-            query = """
-                INSERT INTO users (user_id, username) 
-                VALUES (%s, %s)
-                ON CONFLICT (user_id) DO NOTHING
-            """
-            params = (user_id, username)
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS monitoring (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            product_id INTEGER,
+            active BOOLEAN DEFAULT 1,
+            expiry_date TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (user_id),
+            FOREIGN KEY (product_id) REFERENCES products (product_id)
+        )
+        ''')
         
-        return self._execute_query(query, params)
-    
-    def get_user(self, user_id):
-        """Get user information by Telegram ID"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = "SELECT * FROM users WHERE user_id = ?"
-            params = (user_id,)
-        else:
-            query = "SELECT * FROM users WHERE user_id = %s"
-            params = (user_id,)
+        print("Database initialized successfully")
+
+@contextmanager
+def get_db_connection():
+    """Get a database connection with context management"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+# User operations
+def add_user(user_id, username):
+    """Add a new user to the database"""
+    with get_db_connection() as conn:
+        # Check if user already exists
+        cursor = conn.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
+        if cursor.fetchone() is None:
+            conn.execute(
+                'INSERT INTO users (user_id, username) VALUES (?, ?)',
+                (user_id, username)
+            )
+            conn.commit()
+            return True
+        return False
+
+def get_user(user_id):
+    """Get user information by user_id"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        return cursor.fetchone()
+
+def update_user_balance(user_id, amount):
+    """Update a user's balance"""
+    with get_db_connection() as conn:
+        conn.execute(
+            'UPDATE users SET balance = balance + ? WHERE user_id = ?',
+            (amount, user_id)
+        )
+        conn.commit()
+        return True
+
+def get_all_users():
+    """Get all users"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('SELECT * FROM users ORDER BY created_at DESC')
+        return cursor.fetchall()
+
+# Product operations
+def add_product(product_name, global_link, au_link, price):
+    """Add a new product to the database"""
+    with get_db_connection() as conn:
+        conn.execute(
+            'INSERT INTO products (product_name, global_link, au_link, price) VALUES (?, ?, ?, ?)',
+            (product_name, global_link, au_link, price)
+        )
+        conn.commit()
+        return conn.lastrowid
+
+def get_product(product_id):
+    """Get product information by product_id"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('SELECT * FROM products WHERE product_id = ?', (product_id,))
+        return cursor.fetchone()
+
+def get_all_products():
+    """Get all products"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('SELECT * FROM products ORDER BY product_name')
+        return cursor.fetchall()
+
+def update_product(product_id, product_name=None, global_link=None, au_link=None, price=None):
+    """Update product information"""
+    with get_db_connection() as conn:
+        # Get current values
+        cursor = conn.execute('SELECT * FROM products WHERE product_id = ?', (product_id,))
+        product = cursor.fetchone()
         
-        return self._execute_query(query, params, fetch='one')
-    
-    def update_balance(self, user_id, amount):
-        """Add or subtract from a user's balance"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = "UPDATE users SET balance = balance + ? WHERE user_id = ?"
-            params = (amount, user_id)
-        else:
-            query = "UPDATE users SET balance = balance + %s WHERE user_id = %s"
-            params = (amount, user_id)
+        if not product:
+            return False
         
-        return self._execute_query(query, params)
-    
-    def set_balance(self, user_id, amount):
-        """Set a user's balance to a specific amount"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = "UPDATE users SET balance = ? WHERE user_id = ?"
-            params = (amount, user_id)
-        else:
-            query = "UPDATE users SET balance = %s WHERE user_id = %s"
-            params = (amount, user_id)
+        # Update with new values or keep existing ones
+        name = product_name if product_name is not None else product['product_name']
+        global_url = global_link if global_link is not None else product['global_link']
+        au_url = au_link if au_link is not None else product['au_link']
+        new_price = price if price is not None else product['price']
         
-        return self._execute_query(query, params)
-    
-    # Product methods
-    def add_product(self, product_id, product_name, global_link, au_link, price):
-        """Add or update a product"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                INSERT OR REPLACE INTO products 
-                (product_id, product_name, global_link, au_link, price) 
-                VALUES (?, ?, ?, ?, ?)
-            """
-            params = (product_id, product_name, global_link, au_link, price)
-        else:
-            query = """
-                INSERT INTO products 
-                (product_id, product_name, global_link, au_link, price) 
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (product_id) DO UPDATE 
-                SET product_name = EXCLUDED.product_name,
-                    global_link = EXCLUDED.global_link,
-                    au_link = EXCLUDED.au_link,
-                    price = EXCLUDED.price
-            """
-            params = (product_id, product_name, global_link, au_link, price)
+        conn.execute(
+            'UPDATE products SET product_name = ?, global_link = ?, au_link = ?, price = ? WHERE product_id = ?',
+            (name, global_url, au_url, new_price, product_id)
+        )
+        conn.commit()
+        return True
+
+# Monitoring operations
+def add_monitoring(user_id, product_id, days=30):
+    """Add a new monitoring subscription"""
+    with get_db_connection() as conn:
+        # Calculate expiry date (30 days from now by default)
+        expiry_date = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
         
-        return self._execute_query(query, params)
-    
-    def get_product(self, product_id):
-        """Get product information by ID"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = "SELECT * FROM products WHERE product_id = ?"
-            params = (product_id,)
-        else:
-            query = "SELECT * FROM products WHERE product_id = %s"
-            params = (product_id,)
+        # Check if user has enough balance
+        cursor = conn.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
+        user = cursor.fetchone()
         
-        return self._execute_query(query, params, fetch='one')
-    
-    def get_all_products(self):
-        """Get all products"""
-        query = "SELECT * FROM products"
-        return self._execute_query(query, fetch='all')
-    
-    # Monitoring methods
-    def add_monitoring(self, user_id, product_id):
-        """Add monitoring subscription for a product"""
-        # First check user balance
-        if DATABASE_URL.startswith("sqlite"):
-            balance_query = "SELECT balance FROM users WHERE user_id = ?"
-            balance_params = (user_id,)
-            
-            price_query = "SELECT price FROM products WHERE product_id = ?"
-            price_params = (product_id,)
-        else:
-            balance_query = "SELECT balance FROM users WHERE user_id = %s"
-            balance_params = (user_id,)
-            
-            price_query = "SELECT price FROM products WHERE product_id = %s"
-            price_params = (product_id,)
+        cursor = conn.execute('SELECT price FROM products WHERE product_id = ?', (product_id,))
+        product = cursor.fetchone()
         
-        user = self._execute_query(balance_query, balance_params, fetch='one')
-        product = self._execute_query(price_query, price_params, fetch='one')
-        
-        if not user or not product:
-            return False, "User or product not found"
-        
-        if user[0] < product[0]:
+        if not user or not product or user['balance'] < product['price']:
             return False, "Insufficient balance"
         
         # Deduct balance
-        self.update_balance(user_id, -product[0])
+        conn.execute(
+            'UPDATE users SET balance = balance - ? WHERE user_id = ?',
+            (product['price'], user_id)
+        )
         
-        # Add monitoring with 30-day expiry
-        expiry_date = datetime.now() + timedelta(days=30)
-        
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                INSERT INTO user_monitoring 
-                (user_id, product_id, expiry_date) 
-                VALUES (?, ?, ?)
-            """
-            params = (user_id, product_id, expiry_date)
-        else:
-            query = """
-                INSERT INTO user_monitoring 
-                (user_id, product_id, expiry_date) 
-                VALUES (%s, %s, %s)
-            """
-            params = (user_id, product_id, expiry_date)
-        
-        success = self._execute_query(query, params)
-        
-        if success:
-            return True, "Monitoring subscription added successfully"
-        else:
-            # Refund if monitoring creation failed
-            self.update_balance(user_id, product[0])
-            return False, "Failed to add monitoring subscription"
-    
-    def get_user_monitoring(self, user_id):
-        """Get all active monitoring subscriptions for a user"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                SELECT um.id, p.product_name, p.global_link, p.au_link, um.expiry_date 
-                FROM user_monitoring um
-                JOIN products p ON um.product_id = p.product_id
-                WHERE um.user_id = ? AND um.expiry_date > datetime('now')
-            """
-            params = (user_id,)
-        else:
-            query = """
-                SELECT um.id, p.product_name, p.global_link, p.au_link, um.expiry_date 
-                FROM user_monitoring um
-                JOIN products p ON um.product_id = p.product_id
-                WHERE um.user_id = %s AND um.expiry_date > CURRENT_TIMESTAMP
-            """
-            params = (user_id,)
-        
-        return self._execute_query(query, params, fetch='all')
-    
-    def get_product_subscribers(self, product_id):
-        """Get all users monitoring a specific product"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                SELECT u.user_id, u.username
-                FROM user_monitoring um
-                JOIN users u ON um.user_id = u.user_id
-                WHERE um.product_id = ? AND um.expiry_date > datetime('now')
-            """
-            params = (product_id,)
-        else:
-            query = """
-                SELECT u.user_id, u.username
-                FROM user_monitoring um
-                JOIN users u ON um.user_id = u.user_id
-                WHERE um.product_id = %s AND um.expiry_date > CURRENT_TIMESTAMP
-            """
-            params = (product_id,)
-        
-        return self._execute_query(query, params, fetch='all')
-    
-    def get_all_active_monitoring(self):
-        """Get all products that are being monitored"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                SELECT p.product_id, p.product_name, p.global_link, p.au_link, 
-                       COUNT(DISTINCT um.user_id) as subscriber_count
-                FROM products p
-                JOIN user_monitoring um ON p.product_id = um.product_id
-                WHERE um.expiry_date > datetime('now')
-                GROUP BY p.product_id, p.product_name, p.global_link, p.au_link
-            """
-        else:
-            query = """
-                SELECT p.product_id, p.product_name, p.global_link, p.au_link, 
-                       COUNT(DISTINCT um.user_id) as subscriber_count
-                FROM products p
-                JOIN user_monitoring um ON p.product_id = um.product_id
-                WHERE um.expiry_date > CURRENT_TIMESTAMP
-                GROUP BY p.product_id, p.product_name, p.global_link, p.au_link
-            """
-        
-        return self._execute_query(query, fetch='all')
-    
-    def get_all_users(self):
-        """Get all registered users"""
-        query = "SELECT * FROM users"
-        return self._execute_query(query, fetch='all')
-    
-    # Stock status tracking methods
-    def update_product_stock_status(self, product_id, store_type, is_in_stock):
-        """Update the stock status of a product"""
-        current_time = datetime.now()
-        
-        if DATABASE_URL.startswith("sqlite"):
-            # First check if record exists
-            check_query = """
-                SELECT * FROM product_stock_status 
-                WHERE product_id = ? AND store_type = ?
-            """
-            check_params = (product_id, store_type)
-            
-            existing = self._execute_query(check_query, check_params, fetch='one')
-            
-            if existing:
-                # Update existing record
-                query = """
-                    UPDATE product_stock_status 
-                    SET previous_status = current_status,
-                        current_status = ?,
-                        last_updated = ?
-                    WHERE product_id = ? AND store_type = ?
-                """
-                params = (is_in_stock, current_time, product_id, store_type)
-            else:
-                # Insert new record
-                query = """
-                    INSERT INTO product_stock_status 
-                    (product_id, store_type, previous_status, current_status, last_updated) 
-                    VALUES (?, ?, ?, ?, ?)
-                """
-                params = (product_id, store_type, False, is_in_stock, current_time)
-        else:
-            # PostgreSQL upsert
-            query = """
-                INSERT INTO product_stock_status 
-                (product_id, store_type, previous_status, current_status, last_updated) 
-                VALUES (%s, %s, 
-                    COALESCE((SELECT current_status FROM product_stock_status WHERE product_id = %s AND store_type = %s), FALSE),
-                    %s, %s)
-                ON CONFLICT (product_id, store_type) DO UPDATE 
-                SET previous_status = product_stock_status.current_status,
-                    current_status = EXCLUDED.current_status,
-                    last_updated = EXCLUDED.last_updated
-            """
-            params = (product_id, store_type, product_id, store_type, is_in_stock, current_time)
-        
-        return self._execute_query(query, params)
-    
-    def get_product_stock_status(self, product_id, store_type):
-        """Get the current stock status of a product"""
-        if DATABASE_URL.startswith("sqlite"):
-            query = """
-                SELECT previous_status, current_status, last_updated 
-                FROM product_stock_status 
-                WHERE product_id = ? AND store_type = ?
-            """
-            params = (product_id, store_type)
-        else:
-            query = """
-                SELECT previous_status, current_status, last_updated 
-                FROM product_stock_status 
-                WHERE product_id = %s AND store_type = %s
-            """
-            params = (product_id, store_type)
-        
-        return self._execute_query(query, params, fetch='one')
-    
-    def should_notify_stock_change(self, product_id, store_type, is_in_stock):
-        """Check if we should notify about a stock change"""
-        status = self.get_product_stock_status(product_id, store_type)
-        
-        # Update the stock status
-        self.update_product_stock_status(product_id, store_type, is_in_stock)
-        
-        if not status:
-            # First time checking this product - notify only if in stock
-            return is_in_stock
-        
-        # Notify if status changed from out of stock to in stock
-        return not status[1] and is_in_stock
-    
-    def close(self):
-        """Close the database connection"""
-        if self.conn:
-            self.conn.close()
+        # Add monitoring
+        conn.execute(
+            'INSERT INTO monitoring (user_id, product_id, expiry_date) VALUES (?, ?, ?)',
+            (user_id, product_id, expiry_date)
+        )
+        conn.commit()
+        return True, "Monitoring added successfully"
+
+def get_user_monitoring(user_id):
+    """Get all active monitoring subscriptions for a user"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('''
+            SELECT m.id, m.product_id, p.product_name, m.expiry_date 
+            FROM monitoring m 
+            JOIN products p ON m.product_id = p.product_id 
+            WHERE m.user_id = ? AND m.active = 1 AND m.expiry_date > datetime('now')
+            ORDER BY m.expiry_date
+        ''', (user_id,))
+        return cursor.fetchall()
+
+def get_product_monitors(product_id):
+    """Get all users monitoring a specific product"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('''
+            SELECT m.id, m.user_id, u.username, m.expiry_date 
+            FROM monitoring m 
+            JOIN users u ON m.user_id = u.user_id 
+            WHERE m.product_id = ? AND m.active = 1 AND m.expiry_date > datetime('now')
+            ORDER BY m.expiry_date
+        ''', (product_id,))
+        return cursor.fetchall()
+
+def get_all_active_monitors():
+    """Get all active monitoring subscriptions with user and product details"""
+    with get_db_connection() as conn:
+        cursor = conn.execute('''
+            SELECT m.id, m.user_id, u.username, m.product_id, p.product_name, p.global_link, p.au_link, m.expiry_date 
+            FROM monitoring m 
+            JOIN users u ON m.user_id = u.user_id 
+            JOIN products p ON m.product_id = p.product_id 
+            WHERE m.active = 1 AND m.expiry_date > datetime('now')
+            ORDER BY m.expiry_date
+        ''')
+        return cursor.fetchall()
+
+def cancel_monitoring(monitor_id):
+    """Cancel a monitoring subscription"""
+    with get_db_connection() as conn:
+        conn.execute('UPDATE monitoring SET active = 0 WHERE id = ?', (monitor_id,))
+        conn.commit()
+        return True
